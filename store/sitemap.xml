@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url><loc>https://freepeerstore.pages.dev/</loc><lastmod>2026-06-09</lastmod></url>
+  <url><loc>https://freepeerstore.pages.dev/protocols/bittorrent-sim/</loc><lastmod>2026-06-09</lastmod></url>
+  <url><loc>https://freepeerstore.pages.dev/protocols/crdt-playground/</loc><lastmod>2026-06-09</lastmod></url>
+  <url><loc>https://freepeerstore.pages.dev/protocols/dht-visualizer/</loc><lastmod>2026-06-09</lastmod></url>
+  <url><loc>https://freepeerstore.pages.dev/protocols/gossip-protocol/</loc><lastmod>2026-06-09</lastmod></url>
+  <url><loc>https://freepeerstore.pages.dev/protocols/nat-traversal/</loc><lastmod>2026-06-09</lastmod></url>
+  <url><loc>https://freepeerstore.pages.dev/tools/p2p-file-share/</loc><lastmod>2026-06-09</lastmod></url>
+  <url><loc>https://freepeerstore.pages.dev/tools/webrtc-chat/</loc><lastmod>2026-06-09</lastmod></url>
+  <url><loc>https://freepeerstore.pages.dev/tools/webrtc-video/</loc><lastmod>2026-06-09</lastmod></url>
+  <url><loc>https://freepeerstore.pages.dev/apps/p2p-editor/</loc><lastmod>2026-06-09</lastmod></url>
+  <url><loc>https://freepeerstore.pages.dev/apps/p2p-whiteboard/</loc><lastmod>2026-06-09</lastmod></url>
+</urlset>
