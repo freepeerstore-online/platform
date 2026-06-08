@@ -1,20 +1,18 @@
 {
-  "store": "FreePeerStore",
-  "domain": "freepeerstore.online",
-  "version": "1.0.0",
-  "categories": [
-    { "id": "protocols", "name": "Protocol Simulations", "description": "Interactive visualizations of P2P/distributed protocols" },
-    { "id": "tools", "name": "Working P2P Tools", "description": "Real peer-to-peer tools using WebRTC" },
-    { "id": "apps", "name": "P2P Apps", "description": "Collaborative applications powered by WebRTC" }
-  ],
-  "items": [
+  "robots": [
     {
       "id": "bittorrent-sim",
       "name": "BitTorrent Chunk Distribution",
       "description": "Visualize how BitTorrent splits files into chunks and distributes them across a swarm using rarest-first strategy",
       "category": "protocols",
       "path": "/protocols/bittorrent-sim/",
-      "tags": ["bittorrent", "chunks", "swarm", "rarest-first", "file-sharing"]
+      "tags": [
+        "bittorrent",
+        "chunks",
+        "swarm",
+        "rarest-first",
+        "file-sharing"
+      ]
     },
     {
       "id": "dht-visualizer",
@@ -22,7 +20,13 @@
       "description": "Kademlia-style DHT with XOR routing, k-buckets, node join/leave, and hop-by-hop lookup visualization",
       "category": "protocols",
       "path": "/protocols/dht-visualizer/",
-      "tags": ["dht", "kademlia", "routing", "hash-table", "xor"]
+      "tags": [
+        "dht",
+        "kademlia",
+        "routing",
+        "hash-table",
+        "xor"
+      ]
     },
     {
       "id": "gossip-protocol",
@@ -30,7 +34,13 @@
       "description": "Watch information spread through a network via gossip, compare flooding vs gossip vs tree broadcast",
       "category": "protocols",
       "path": "/protocols/gossip-protocol/",
-      "tags": ["gossip", "epidemic", "broadcast", "convergence", "partition"]
+      "tags": [
+        "gossip",
+        "epidemic",
+        "broadcast",
+        "convergence",
+        "partition"
+      ]
     },
     {
       "id": "crdt-playground",
@@ -38,7 +48,13 @@
       "description": "Three simulated users editing via CRDTs with configurable delay and packet loss, conflict visualization",
       "category": "protocols",
       "path": "/protocols/crdt-playground/",
-      "tags": ["crdt", "convergence", "conflict-free", "collaborative", "eventual-consistency"]
+      "tags": [
+        "crdt",
+        "convergence",
+        "conflict-free",
+        "collaborative",
+        "eventual-consistency"
+      ]
     },
     {
       "id": "nat-traversal",
@@ -46,7 +62,14 @@
       "description": "Step-by-step animation of STUN discovery, hole punching, and TURN relay fallback across NAT types",
       "category": "protocols",
       "path": "/protocols/nat-traversal/",
-      "tags": ["nat", "stun", "turn", "hole-punching", "ice", "webrtc"]
+      "tags": [
+        "nat",
+        "stun",
+        "turn",
+        "hole-punching",
+        "ice",
+        "webrtc"
+      ]
     },
     {
       "id": "webrtc-chat",
@@ -54,7 +77,13 @@
       "description": "Actual working peer-to-peer chat via WebRTC DataChannel with clipboard-based signaling",
       "category": "tools",
       "path": "/tools/webrtc-chat/",
-      "tags": ["webrtc", "chat", "datachannel", "p2p", "real"]
+      "tags": [
+        "webrtc",
+        "chat",
+        "datachannel",
+        "p2p",
+        "real"
+      ]
     },
     {
       "id": "webrtc-video",
@@ -62,7 +91,13 @@
       "description": "Peer-to-peer video calling with camera, microphone, and screen share via clipboard signaling",
       "category": "tools",
       "path": "/tools/webrtc-video/",
-      "tags": ["webrtc", "video", "audio", "screen-share", "p2p"]
+      "tags": [
+        "webrtc",
+        "video",
+        "audio",
+        "screen-share",
+        "p2p"
+      ]
     },
     {
       "id": "p2p-file-share",
@@ -70,7 +105,13 @@
       "description": "Send any file directly browser-to-browser via WebRTC DataChannel, zero server involvement",
       "category": "tools",
       "path": "/tools/p2p-file-share/",
-      "tags": ["file-transfer", "webrtc", "datachannel", "chunked", "p2p"]
+      "tags": [
+        "file-transfer",
+        "webrtc",
+        "datachannel",
+        "chunked",
+        "p2p"
+      ]
     },
     {
       "id": "p2p-whiteboard",
@@ -78,7 +119,13 @@
       "description": "Draw together in real-time over WebRTC with brush, shapes, colors, and per-user undo",
       "category": "apps",
       "path": "/apps/p2p-whiteboard/",
-      "tags": ["whiteboard", "drawing", "collaborative", "canvas", "webrtc"]
+      "tags": [
+        "whiteboard",
+        "drawing",
+        "collaborative",
+        "canvas",
+        "webrtc"
+      ]
     },
     {
       "id": "p2p-editor",
@@ -86,7 +133,13 @@
       "description": "CRDT-based code editor synced over WebRTC with remote cursors and syntax highlighting",
       "category": "apps",
       "path": "/apps/p2p-editor/",
-      "tags": ["editor", "crdt", "collaborative", "code", "syntax-highlighting"]
+      "tags": [
+        "editor",
+        "crdt",
+        "collaborative",
+        "code",
+        "syntax-highlighting"
+      ]
     }
   ]
 }
