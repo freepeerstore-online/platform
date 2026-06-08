@@ -1,0 +1,497 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Distributed Hash Table — FreePeerStore</title>
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: #0a0a0a; color: #e4e4e7; font-family: 'Manrope', sans-serif; min-height: 100vh; }
+    a { color: #a855f7; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+
+    .header { padding: 1rem 2rem; border-bottom: 1px solid #27272a; display: flex; align-items: center; gap: 1rem; }
+    .header .back { color: #71717a; font-size: 0.85rem; }
+    .header h1 { font-size: 1.1rem; font-weight: 700; }
+    .header h1 span { color: #a855f7; }
+
+    .layout { display: flex; height: calc(100vh - 53px); }
+    .sidebar { width: 300px; min-width: 300px; border-right: 1px solid #27272a; padding: 1.25rem; overflow-y: auto; display: flex; flex-direction: column; gap: 0.75rem; }
+    .main { flex: 1; position: relative; }
+    canvas { display: block; width: 100%; height: 100%; }
+
+    label { font-size: 0.8rem; color: #a1a1aa; display: block; margin-bottom: 4px; }
+    .input-group { display: flex; gap: 6px; margin-bottom: 0.5rem; }
+    input[type=text] {
+      flex: 1; background: #18181b; border: 1px solid #27272a; color: #e4e4e7;
+      padding: 8px 12px; border-radius: 6px; font-family: 'JetBrains Mono', monospace; font-size: 0.8rem;
+    }
+    input[type=text]:focus { outline: none; border-color: #a855f7; }
+
+    .btn {
+      background: #a855f7; color: #fff; border: none; padding: 8px 16px;
+      border-radius: 6px; cursor: pointer; font-family: 'Manrope', sans-serif;
+      font-weight: 600; font-size: 0.8rem; transition: background 0.2s; white-space: nowrap;
+    }
+    .btn:hover { background: #9333ea; }
+    .btn.sm { padding: 6px 12px; font-size: 0.75rem; }
+    .btn.secondary { background: #27272a; color: #e4e4e7; }
+    .btn.secondary:hover { background: #3f3f46; }
+
+    .section-title { font-size: 0.75rem; color: #71717a; text-transform: uppercase; letter-spacing: 0.05em; margin-top: 0.5rem; }
+
+    .log {
+      background: #18181b; border: 1px solid #27272a; border-radius: 8px;
+      padding: 0.75rem; font-family: 'JetBrains Mono', monospace; font-size: 0.7rem;
+      max-height: 200px; overflow-y: auto; line-height: 1.6; flex: 1; min-height: 100px;
+    }
+    .log .hop { color: #a855f7; }
+    .log .found { color: #22c55e; }
+    .log .store { color: #3b82f6; }
+    .log .err { color: #ef4444; }
+    .log .info { color: #71717a; }
+
+    .node-info {
+      background: #18181b; border: 1px solid #27272a; border-radius: 8px;
+      padding: 0.75rem; font-size: 0.75rem;
+    }
+    .node-info h4 { font-size: 0.8rem; margin-bottom: 0.5rem; color: #a855f7; }
+    .node-info .kv { display: flex; justify-content: space-between; padding: 2px 0; }
+    .node-info .kv .k { color: #71717a; }
+    .node-info .kv .v { font-family: 'JetBrains Mono', monospace; font-size: 0.7rem; }
+
+    .bucket-vis { margin-top: 0.5rem; }
+    .bucket-row { display: flex; align-items: center; gap: 6px; padding: 2px 0; font-size: 0.7rem; }
+    .bucket-row .bi { color: #71717a; width: 30px; font-family: 'JetBrains Mono', monospace; }
+    .bucket-row .dots { display: flex; gap: 2px; }
+    .bucket-row .dot { width: 8px; height: 8px; border-radius: 50%; background: #a855f7; }
+
+    @media (max-width: 768px) {
+      .layout { flex-direction: column; }
+      .sidebar { width: 100%; min-width: 0; max-height: 45vh; border-right: none; border-bottom: 1px solid #27272a; }
+    }
+  </style>
+</head>
+<body>
+
+<div class="header">
+  <a href="/" class="back">FreePeerStore</a>
+  <h1><span>DHT</span> Visualizer</h1>
+</div>
+
+<div class="layout">
+  <div class="sidebar">
+    <div class="section-title">Store value</div>
+    <div class="input-group">
+      <input type="text" id="storeKey" placeholder="key">
+      <input type="text" id="storeVal" placeholder="value">
+      <button class="btn sm" id="storeBtn">Store</button>
+    </div>
+
+    <div class="section-title">Lookup value</div>
+    <div class="input-group">
+      <input type="text" id="lookupKey" placeholder="key">
+      <button class="btn sm" id="lookupBtn">Lookup</button>
+    </div>
+
+    <div class="section-title">Network</div>
+    <div class="input-group">
+      <button class="btn sm secondary" id="addNodeBtn">Add Node</button>
+      <button class="btn sm secondary" id="removeNodeBtn">Remove Node</button>
+      <button class="btn sm secondary" id="resetBtn">Reset</button>
+    </div>
+
+    <div class="node-info" id="nodeInfo">
+      <h4>Click a node to inspect</h4>
+    </div>
+
+    <div class="section-title">Operation log</div>
+    <div class="log" id="log"></div>
+  </div>
+
+  <div class="main">
+    <canvas id="canvas"></canvas>
+  </div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const canvas = $('canvas'), ctx = canvas.getContext('2d');
+
+const K = 4; /* k-bucket size */
+const ID_BITS = 8; /* 256 possible IDs */
+const ID_SPACE = 1 << ID_BITS;
+let nodes = [];
+let selectedNode = null;
+let animHops = []; /* for animated lookups */
+let animStep = 0;
+let animTimer = null;
+
+function hash(str) {
+  let h = 0;
+  for (let i = 0; i < str.length; i++) h = ((h << 5) - h + str.charCodeAt(i)) & 0xFF;
+  return h;
+}
+
+function xorDist(a, b) { return a ^ b; }
+
+function bitPrefix(a, b) {
+  const x = a ^ b;
+  for (let i = ID_BITS - 1; i >= 0; i--) {
+    if (x & (1 << i)) return ID_BITS - 1 - i;
+  }
+  return ID_BITS;
+}
+
+class DHTNode {
+  constructor(id) {
+    this.id = id;
+    this.buckets = Array.from({ length: ID_BITS }, () => []);
+    this.store = new Map();
+  }
+
+  addToBucket(nodeId) {
+    if (nodeId === this.id) return;
+    const bucket = bitPrefix(this.id, nodeId);
+    const b = this.buckets[bucket];
+    if (!b.includes(nodeId)) {
+      if (b.length < K) b.push(nodeId);
+    }
+  }
+
+  closestNodes(target, count) {
+    const all = this.buckets.flat();
+    all.sort((a, b) => xorDist(a, target) - xorDist(b, target));
+    return all.slice(0, count);
+  }
+}
+
+function createNetwork(count) {
+  nodes = [];
+  const ids = new Set();
+  while (ids.size < count) ids.add(Math.floor(Math.random() * ID_SPACE));
+  [...ids].sort((a, b) => a - b).forEach(id => nodes.push(new DHTNode(id)));
+
+  /* Bootstrap: each node knows about all others */
+  nodes.forEach(n => {
+    nodes.forEach(m => n.addToBucket(m.id));
+  });
+}
+
+function findNode(targetId) {
+  if (nodes.length === 0) return null;
+  return nodes.reduce((best, n) => xorDist(n.id, targetId) < xorDist(best.id, targetId) ? n : best, nodes[0]);
+}
+
+function lookup(targetId, startNode) {
+  const hops = [{ nodeId: startNode.id, action: 'start' }];
+  let current = startNode;
+  const visited = new Set([current.id]);
+
+  for (let i = 0; i < 10; i++) {
+    const closest = current.closestNodes(targetId, K);
+    let next = null;
+    for (const cId of closest) {
+      if (!visited.has(cId)) {
+        const cNode = nodes.find(n => n.id === cId);
+        if (cNode) {
+          visited.add(cId);
+          const dist = xorDist(cId, targetId);
+          hops.push({ nodeId: cId, action: 'hop', dist });
+          if (cId === targetId || dist < xorDist(current.id, targetId)) {
+            next = cNode;
+            break;
+          }
+        }
+      }
+    }
+    if (!next) break;
+    current = next;
+    if (current.id === targetId) break;
+  }
+  return { hops, finalNode: current };
+}
+
+function log(html) {
+  const el = $('log');
+  el.innerHTML += html + '<br>';
+  el.scrollTop = el.scrollHeight;
+}
+
+function animateLookup(hops, callback) {
+  animHops = hops;
+  animStep = 0;
+  clearInterval(animTimer);
+  animTimer = setInterval(() => {
+    animStep++;
+    draw();
+    if (animStep >= hops.length) {
+      clearInterval(animTimer);
+      if (callback) callback();
+    }
+  }, 600);
+}
+
+/* Store operation */
+$('storeBtn').addEventListener('click', () => {
+  const key = $('storeKey').value.trim();
+  const val = $('storeVal').value.trim();
+  if (!key || !val) return;
+  const h = hash(key);
+  const responsible = findNode(h);
+  if (!responsible) return;
+
+  const start = nodes[Math.floor(Math.random() * nodes.length)];
+  log(`<span class="store">STORE</span> key="${key}" hash=${h} → routing from node ${start.id}`);
+
+  const { hops, finalNode } = lookup(responsible.id, start);
+  animateLookup(hops, () => {
+    responsible.store.set(key, val);
+    log(`<span class="found">STORED</span> "${key}=${val}" at node ${responsible.id} (${hops.length} hops)`);
+  });
+});
+
+/* Lookup operation */
+$('lookupBtn').addEventListener('click', () => {
+  const key = $('lookupKey').value.trim();
+  if (!key) return;
+  const h = hash(key);
+  const responsible = findNode(h);
+  if (!responsible) return;
+
+  const start = nodes[Math.floor(Math.random() * nodes.length)];
+  log(`<span class="hop">LOOKUP</span> key="${key}" hash=${h} → starting from node ${start.id}`);
+
+  const { hops, finalNode } = lookup(responsible.id, start);
+  animateLookup(hops, () => {
+    const val = responsible.store.get(key);
+    if (val !== undefined) {
+      log(`<span class="found">FOUND</span> "${key}" = "${val}" at node ${responsible.id} (${hops.length} hops)`);
+    } else {
+      log(`<span class="err">NOT FOUND</span> "${key}" — not stored in DHT`);
+    }
+  });
+});
+
+/* Add node */
+$('addNodeBtn').addEventListener('click', () => {
+  const existingIds = new Set(nodes.map(n => n.id));
+  let newId;
+  do { newId = Math.floor(Math.random() * ID_SPACE); } while (existingIds.has(newId));
+
+  const newNode = new DHTNode(newId);
+  nodes.push(newNode);
+  nodes.sort((a, b) => a.id - b.id);
+
+  /* Bootstrap new node from a random existing node */
+  nodes.forEach(n => {
+    newNode.addToBucket(n.id);
+    n.addToBucket(newNode.id);
+  });
+
+  log(`<span class="info">JOIN</span> node ${newId} joined the network (${nodes.length} nodes)`);
+  draw();
+});
+
+/* Remove node */
+$('removeNodeBtn').addEventListener('click', () => {
+  if (nodes.length <= 3) return;
+  const idx = Math.floor(Math.random() * nodes.length);
+  const removed = nodes.splice(idx, 1)[0];
+
+  /* Migrate data to closest remaining node */
+  if (removed.store.size > 0) {
+    const closest = findNode(removed.id);
+    removed.store.forEach((v, k) => closest.store.set(k, v));
+    log(`<span class="info">LEAVE</span> node ${removed.id} left — ${removed.store.size} keys migrated to node ${closest.id}`);
+  } else {
+    log(`<span class="info">LEAVE</span> node ${removed.id} left the network (${nodes.length} nodes)`);
+  }
+
+  /* Clean buckets */
+  nodes.forEach(n => {
+    n.buckets = n.buckets.map(b => b.filter(id => id !== removed.id));
+  });
+  draw();
+});
+
+$('resetBtn').addEventListener('click', () => {
+  createNetwork(20);
+  $('log').innerHTML = '';
+  selectedNode = null;
+  log(`<span class="info">RESET</span> 20-node DHT initialized`);
+  draw();
+});
+
+/* Canvas */
+function resize() {
+  const dpr = window.devicePixelRatio || 1;
+  const rect = canvas.parentElement.getBoundingClientRect();
+  canvas.width = rect.width * dpr;
+  canvas.height = rect.height * dpr;
+  ctx.scale(dpr, dpr);
+  canvas.style.width = rect.width + 'px';
+  canvas.style.height = rect.height + 'px';
+}
+
+function nodePos(node, idx) {
+  const w = canvas.width / (window.devicePixelRatio || 1);
+  const h = canvas.height / (window.devicePixelRatio || 1);
+  const cx = w / 2, cy = h / 2;
+  const r = Math.min(cx, cy) * 0.78;
+  /* Place by ID in the hash ring */
+  const angle = (node.id / ID_SPACE) * Math.PI * 2 - Math.PI / 2;
+  return { x: cx + Math.cos(angle) * r, y: cy + Math.sin(angle) * r };
+}
+
+function draw() {
+  const w = canvas.width / (window.devicePixelRatio || 1);
+  const h = canvas.height / (window.devicePixelRatio || 1);
+  ctx.clearRect(0, 0, w, h);
+  const cx = w / 2, cy = h / 2;
+  const r = Math.min(cx, cy) * 0.78;
+
+  /* Ring */
+  ctx.beginPath();
+  ctx.arc(cx, cy, r, 0, Math.PI * 2);
+  ctx.strokeStyle = '#27272a';
+  ctx.lineWidth = 1;
+  ctx.stroke();
+
+  /* ID space label */
+  ctx.fillStyle = '#3f3f46';
+  ctx.font = '10px JetBrains Mono';
+  ctx.textAlign = 'center';
+  ctx.fillText(`ID Space: 0-${ID_SPACE - 1}`, cx, cy - r - 12);
+
+  /* Draw routing lines for selected node */
+  if (selectedNode) {
+    const sp = nodePos(selectedNode);
+    selectedNode.buckets.flat().forEach(bid => {
+      const bn = nodes.find(n => n.id === bid);
+      if (bn) {
+        const bp = nodePos(bn);
+        ctx.beginPath();
+        ctx.moveTo(sp.x, sp.y);
+        ctx.lineTo(bp.x, bp.y);
+        ctx.strokeStyle = 'rgba(168,85,247,0.15)';
+        ctx.lineWidth = 1;
+        ctx.stroke();
+      }
+    });
+  }
+
+  /* Animated hops */
+  if (animHops.length > 0 && animStep > 0) {
+    for (let i = 0; i < Math.min(animStep, animHops.length) - 1; i++) {
+      const from = nodes.find(n => n.id === animHops[i].nodeId);
+      const to = nodes.find(n => n.id === animHops[i + 1].nodeId);
+      if (from && to) {
+        const fp = nodePos(from), tp = nodePos(to);
+        ctx.beginPath();
+        ctx.moveTo(fp.x, fp.y);
+        ctx.lineTo(tp.x, tp.y);
+        ctx.strokeStyle = '#a855f7';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+
+        /* Arrow */
+        const angle = Math.atan2(tp.y - fp.y, tp.x - fp.x);
+        const ax = tp.x - Math.cos(angle) * 18;
+        const ay = tp.y - Math.sin(angle) * 18;
+        ctx.beginPath();
+        ctx.moveTo(ax, ay);
+        ctx.lineTo(ax - 8 * Math.cos(angle - 0.4), ay - 8 * Math.sin(angle - 0.4));
+        ctx.moveTo(ax, ay);
+        ctx.lineTo(ax - 8 * Math.cos(angle + 0.4), ay - 8 * Math.sin(angle + 0.4));
+        ctx.stroke();
+
+        /* Hop label */
+        ctx.fillStyle = '#a855f7';
+        ctx.font = '9px JetBrains Mono';
+        ctx.textAlign = 'center';
+        ctx.fillText(`hop ${i + 1}`, (fp.x + tp.x) / 2, (fp.y + tp.y) / 2 - 8);
+      }
+    }
+  }
+
+  /* Nodes */
+  nodes.forEach((node, idx) => {
+    const { x, y } = nodePos(node, idx);
+    const isAnimActive = animHops.some((h, i) => h.nodeId === node.id && i < animStep);
+    const isSelected = selectedNode && selectedNode.id === node.id;
+    const hasData = node.store.size > 0;
+    const nr = hasData ? 14 : 11;
+
+    ctx.beginPath();
+    ctx.arc(x, y, nr, 0, Math.PI * 2);
+    ctx.fillStyle = isSelected ? '#a855f7' : isAnimActive ? '#7c3aed' : hasData ? '#18181b' : '#18181b';
+    ctx.fill();
+    ctx.strokeStyle = isSelected ? '#c084fc' : isAnimActive ? '#a855f7' : hasData ? '#a855f7' : '#3f3f46';
+    ctx.lineWidth = isSelected || isAnimActive ? 2.5 : 1.5;
+    ctx.stroke();
+
+    /* Data indicator */
+    if (hasData && !isSelected) {
+      ctx.beginPath();
+      ctx.arc(x + nr - 2, y - nr + 2, 4, 0, Math.PI * 2);
+      ctx.fillStyle = '#22c55e';
+      ctx.fill();
+    }
+
+    /* Label */
+    ctx.fillStyle = isSelected || isAnimActive ? '#fff' : '#a1a1aa';
+    ctx.font = '9px JetBrains Mono';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(node.id, x, y);
+  });
+}
+
+/* Click to select node */
+canvas.addEventListener('click', (e) => {
+  const rect = canvas.getBoundingClientRect();
+  const mx = e.clientX - rect.left, my = e.clientY - rect.top;
+
+  selectedNode = null;
+  nodes.forEach(node => {
+    const { x, y } = nodePos(node);
+    if (Math.hypot(mx - x, my - y) < 18) selectedNode = node;
+  });
+
+  if (selectedNode) {
+    const info = $('nodeInfo');
+    const bucketHtml = selectedNode.buckets
+      .map((b, i) => b.length > 0 ? `<div class="bucket-row"><span class="bi">b${i}</span><div class="dots">${b.map(id => `<div class="dot" title="Node ${id}"></div>`).join('')}</div><span style="color:#71717a;font-size:0.65rem;margin-left:4px">[${b.join(', ')}]</span></div>` : '')
+      .filter(Boolean).join('');
+
+    const dataHtml = selectedNode.store.size > 0
+      ? [...selectedNode.store.entries()].map(([k, v]) => `<div class="kv"><span class="k">${k}</span><span class="v">${v}</span></div>`).join('')
+      : '<span style="color:#71717a">No stored data</span>';
+
+    info.innerHTML = `
+      <h4>Node ${selectedNode.id}</h4>
+      <div class="kv"><span class="k">ID (binary)</span><span class="v">${selectedNode.id.toString(2).padStart(ID_BITS, '0')}</span></div>
+      <div class="kv"><span class="k">Stored keys</span><span class="v">${selectedNode.store.size}</span></div>
+      <div class="kv"><span class="k">Known peers</span><span class="v">${selectedNode.buckets.flat().length}</span></div>
+      <div style="margin-top:0.5rem;font-size:0.7rem;color:#71717a">K-Buckets:</div>
+      <div class="bucket-vis">${bucketHtml || '<span style="color:#71717a;font-size:0.7rem">Empty buckets</span>'}</div>
+      <div style="margin-top:0.5rem;font-size:0.7rem;color:#71717a">Stored data:</div>
+      ${dataHtml}
+    `;
+  }
+  draw();
+});
+
+window.addEventListener('resize', () => { resize(); draw(); });
+
+createNetwork(20);
+resize();
+log(`<span class="info">INIT</span> 20-node Kademlia DHT initialized (${ID_BITS}-bit ID space)`);
+draw();
+</script>
+<script src="/related.js"></script>
+</body>
+</html>

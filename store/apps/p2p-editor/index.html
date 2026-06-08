@@ -1,0 +1,497 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>P2P Collaborative Editor — FreePeerStore</title>
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: #0a0a0a; color: #e4e4e7; font-family: 'Manrope', sans-serif; height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+    a { color: #a855f7; text-decoration: none; }
+
+    .header {
+      padding: 0.5rem 1rem; border-bottom: 1px solid #27272a;
+      display: flex; align-items: center; gap: 0.75rem; flex-shrink: 0;
+    }
+    .header .back { color: #71717a; font-size: 0.8rem; }
+    .header h1 { font-size: 0.95rem; font-weight: 700; }
+    .header h1 span { color: #a855f7; }
+    .header .spacer { flex: 1; }
+
+    .pill {
+      padding: 3px 10px; border-radius: 999px; font-size: 0.7rem;
+      font-family: 'JetBrains Mono', monospace; border: 1px solid #27272a; color: #71717a;
+    }
+    .pill.on { border-color: #22c55e; color: #22c55e; }
+
+    .toolbar {
+      padding: 0.4rem 1rem; border-bottom: 1px solid #27272a;
+      display: flex; align-items: center; gap: 8px; flex-shrink: 0; font-size: 0.8rem;
+    }
+    select.lang-sel {
+      background: #18181b; border: 1px solid #27272a; color: #e4e4e7;
+      padding: 4px 8px; border-radius: 6px; font-family: 'JetBrains Mono', monospace;
+      font-size: 0.75rem;
+    }
+    .btn-sm {
+      padding: 5px 10px; border-radius: 6px; border: 1px solid #27272a;
+      background: #18181b; color: #a1a1aa; cursor: pointer; font-size: 0.75rem;
+      font-weight: 600; transition: all 0.2s;
+    }
+    .btn-sm:hover { border-color: #3f3f46; color: #e4e4e7; }
+    .btn-sm.primary { background: #a855f7; color: #fff; border-color: #a855f7; }
+    .btn-sm.primary:hover { background: #9333ea; }
+
+    .editor-wrap { flex: 1; display: flex; overflow: hidden; position: relative; }
+
+    .line-numbers {
+      width: 48px; background: #18181b; border-right: 1px solid #27272a;
+      padding: 12px 0; text-align: right; font-family: 'JetBrains Mono', monospace;
+      font-size: 13px; line-height: 1.55; color: #3f3f46; overflow: hidden;
+      user-select: none; flex-shrink: 0;
+    }
+    .line-numbers .ln { padding-right: 12px; }
+    .line-numbers .ln.active { color: #a855f7; }
+
+    .editor-container { flex: 1; position: relative; overflow: hidden; }
+
+    /* Highlighted code layer */
+    .highlight-layer {
+      position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+      padding: 12px 16px; font-family: 'JetBrains Mono', monospace;
+      font-size: 13px; line-height: 1.55; white-space: pre-wrap;
+      word-wrap: break-word; overflow-y: auto; pointer-events: none;
+      color: transparent; /* hidden, just for structure */
+    }
+
+    textarea.editor {
+      position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+      background: transparent; color: #e4e4e7; border: none;
+      padding: 12px 16px; font-family: 'JetBrains Mono', monospace;
+      font-size: 13px; line-height: 1.55; resize: none;
+      caret-color: #a855f7; tab-size: 2;
+    }
+    textarea.editor:focus { outline: none; }
+
+    /* Syntax highlight overlay */
+    .syntax-overlay {
+      position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+      padding: 12px 16px; font-family: 'JetBrains Mono', monospace;
+      font-size: 13px; line-height: 1.55; white-space: pre-wrap;
+      word-wrap: break-word; overflow-y: auto; pointer-events: none;
+    }
+    .syntax-overlay .kw { color: #c084fc; }
+    .syntax-overlay .str { color: #34d399; }
+    .syntax-overlay .num { color: #f59e0b; }
+    .syntax-overlay .cmt { color: #71717a; font-style: italic; }
+    .syntax-overlay .fn { color: #60a5fa; }
+    .syntax-overlay .op { color: #f87171; }
+    .syntax-overlay .tag { color: #c084fc; }
+    .syntax-overlay .attr { color: #60a5fa; }
+
+    /* Remote cursor */
+    .remote-cursor {
+      position: absolute; width: 2px; height: 18px; background: #a855f7;
+      pointer-events: none; z-index: 10;
+    }
+    .remote-cursor::after {
+      content: attr(data-user); position: absolute; top: -18px; left: 0;
+      background: #a855f7; color: #fff; padding: 1px 6px; border-radius: 3px;
+      font-size: 0.6rem; font-family: 'JetBrains Mono', monospace; white-space: nowrap;
+    }
+
+    /* Connection panel */
+    .conn-panel {
+      position: absolute; top: 10px; right: 10px; background: #18181b;
+      border: 1px solid #27272a; border-radius: 10px; padding: 1rem;
+      width: 280px; z-index: 20; font-size: 0.8rem;
+    }
+    .conn-panel.hidden { display: none; }
+    .conn-panel h3 { font-size: 0.85rem; margin-bottom: 0.5rem; }
+    .conn-panel textarea {
+      width: 100%; height: 55px; background: #0a0a0a; border: 1px solid #27272a;
+      color: #e4e4e7; padding: 6px; border-radius: 6px; font-family: 'JetBrains Mono', monospace;
+      font-size: 0.6rem; resize: none; margin-bottom: 0.5rem;
+    }
+    .conn-panel textarea:focus { outline: none; border-color: #a855f7; }
+    .conn-panel .row { display: flex; gap: 4px; margin-bottom: 0.5rem; }
+    .conn-panel .row button { flex: 1; }
+
+    .footer-bar {
+      padding: 0.3rem 1rem; border-top: 1px solid #27272a;
+      display: flex; gap: 2rem; font-size: 0.7rem; font-family: 'JetBrains Mono', monospace;
+      color: #71717a; flex-shrink: 0;
+    }
+    .footer-bar .hl { color: #a855f7; }
+  </style>
+</head>
+<body>
+
+<div class="header">
+  <a href="/" class="back">FreePeerStore</a>
+  <h1><span>P2P</span> Collaborative Editor</h1>
+  <div class="spacer"></div>
+  <span class="pill" id="statusPill">Solo</span>
+</div>
+
+<div class="toolbar">
+  <select class="lang-sel" id="langSel">
+    <option value="javascript">JavaScript</option>
+    <option value="html">HTML</option>
+    <option value="css">CSS</option>
+    <option value="python">Python</option>
+    <option value="json">JSON</option>
+    <option value="plain">Plain text</option>
+  </select>
+  <button class="btn-sm" id="exportBtn">Export</button>
+  <button class="btn-sm primary" id="connectBtn">Connect Peer</button>
+</div>
+
+<div class="editor-wrap" id="editorWrap">
+  <div class="line-numbers" id="lineNums"></div>
+  <div class="editor-container">
+    <div class="syntax-overlay" id="syntaxOverlay"></div>
+    <textarea class="editor" id="editor" spellcheck="false" placeholder="Start typing or connect a peer..."></textarea>
+  </div>
+
+  <div class="conn-panel hidden" id="connPanel">
+    <h3>P2P Connection</h3>
+    <div class="row">
+      <button class="btn-sm primary" id="createRoom">Create</button>
+      <button class="btn-sm" id="joinRoom">Join</button>
+    </div>
+    <div id="cpOffer" style="display:none">
+      <span style="font-size:0.65rem;color:#71717a">Your offer:</span>
+      <textarea id="offerText" readonly></textarea>
+      <button class="btn-sm" id="copyOffer" style="width:100%">Copy</button>
+      <span style="font-size:0.65rem;color:#71717a;display:block;margin-top:4px">Paste answer:</span>
+      <textarea id="answerIn" placeholder="Paste answer..."></textarea>
+      <button class="btn-sm primary" id="acceptAns" style="width:100%">Accept</button>
+    </div>
+    <div id="cpJoin" style="display:none">
+      <span style="font-size:0.65rem;color:#71717a">Paste offer:</span>
+      <textarea id="offerIn" placeholder="Paste offer..."></textarea>
+      <button class="btn-sm primary" id="genAns" style="width:100%">Generate Answer</button>
+      <div id="ansOut" style="display:none">
+        <span style="font-size:0.65rem;color:#71717a;display:block;margin-top:4px">Your answer:</span>
+        <textarea id="answerText" readonly></textarea>
+        <button class="btn-sm" id="copyAns" style="width:100%">Copy</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="footer-bar">
+  <span>Lines: <span class="hl" id="fLines">1</span></span>
+  <span>Chars: <span class="hl" id="fChars">0</span></span>
+  <span>Cursor: <span class="hl" id="fCursor">1:1</span></span>
+  <span>CRDT ops: <span class="hl" id="fOps">0</span></span>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const editor = $('editor');
+const ICE_SERVERS = [{ urls: 'stun:stun.l.google.com:19302' }];
+
+let pc = null, dc = null;
+let lang = 'javascript';
+let opCount = 0;
+let myId = Math.random().toString(36).slice(2, 6);
+let remoteCursorEl = null;
+let suppressSync = false;
+
+/* Simple CRDT: we use operational transform approach (state-based sync) */
+/* Each edit sends the full document state + cursor pos */
+/* This is a simplified approach suitable for 2 peers */
+
+let docVersion = 0;
+
+function syncDoc() {
+  if (!dc || dc.readyState !== 'open' || suppressSync) return;
+  docVersion++;
+  opCount++;
+  dc.send(JSON.stringify({
+    type: 'doc',
+    text: editor.value,
+    version: docVersion,
+    cursor: editor.selectionStart,
+    userId: myId
+  }));
+  $('fOps').textContent = opCount;
+}
+
+function applySyncDoc(msg) {
+  suppressSync = true;
+  const cursorBefore = editor.selectionStart;
+  const lenBefore = editor.value.length;
+  editor.value = msg.text;
+  /* Try to preserve local cursor position */
+  const lenDiff = editor.value.length - lenBefore;
+  const newCursor = Math.max(0, Math.min(cursorBefore + (msg.cursor <= cursorBefore ? lenDiff : 0), editor.value.length));
+  editor.setSelectionRange(newCursor, newCursor);
+  suppressSync = false;
+  updateUI();
+  showRemoteCursor(msg.cursor, msg.userId);
+}
+
+function showRemoteCursor(pos, userId) {
+  if (!remoteCursorEl) {
+    remoteCursorEl = document.createElement('div');
+    remoteCursorEl.className = 'remote-cursor';
+    $('editorWrap').querySelector('.editor-container').appendChild(remoteCursorEl);
+  }
+  remoteCursorEl.dataset.user = userId;
+
+  /* Calculate cursor position in textarea */
+  const text = editor.value.substring(0, pos);
+  const lines = text.split('\n');
+  const line = lines.length - 1;
+  const col = lines[lines.length - 1].length;
+
+  /* Approximate pixel position */
+  const lineHeight = 20.15; /* 13px * 1.55 line-height */
+  const charWidth = 7.8; /* approximate monospace */
+  remoteCursorEl.style.top = (12 + line * lineHeight) + 'px';
+  remoteCursorEl.style.left = (16 + col * charWidth) + 'px';
+}
+
+/* Syntax highlighting */
+const RULES = {
+  javascript: [
+    { re: /(\/\/.*$)/gm, cls: 'cmt' },
+    { re: /(\/\*[\s\S]*?\*\/)/g, cls: 'cmt' },
+    { re: /("(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|`(?:\\.|[^`\\])*`)/g, cls: 'str' },
+    { re: /\b(\d+\.?\d*)\b/g, cls: 'num' },
+    { re: /\b(const|let|var|function|return|if|else|for|while|class|import|export|from|default|new|this|async|await|try|catch|throw|switch|case|break|continue|typeof|instanceof|of|in|yield)\b/g, cls: 'kw' },
+    { re: /\b([a-zA-Z_]\w*)\s*(?=\()/g, cls: 'fn' },
+    { re: /(=>|===|!==|==|!=|&&|\|\||[+\-*/%]=?|[<>]=?)/g, cls: 'op' }
+  ],
+  python: [
+    { re: /(#.*$)/gm, cls: 'cmt' },
+    { re: /("""[\s\S]*?"""|'''[\s\S]*?'''|"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*')/g, cls: 'str' },
+    { re: /\b(\d+\.?\d*)\b/g, cls: 'num' },
+    { re: /\b(def|class|if|elif|else|for|while|return|import|from|as|try|except|finally|with|yield|lambda|and|or|not|in|is|True|False|None|pass|break|continue|raise|global|nonlocal|async|await)\b/g, cls: 'kw' },
+    { re: /\b([a-zA-Z_]\w*)\s*(?=\()/g, cls: 'fn' }
+  ],
+  html: [
+    { re: /(&lt;!--[\s\S]*?--&gt;)/g, cls: 'cmt' },
+    { re: /(&lt;\/?)([\w-]+)/g, cls: 'tag' },
+    { re: /\b([a-zA-Z-]+)(?==)/g, cls: 'attr' },
+    { re: /("(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*')/g, cls: 'str' }
+  ],
+  css: [
+    { re: /(\/\*[\s\S]*?\*\/)/g, cls: 'cmt' },
+    { re: /("(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*')/g, cls: 'str' },
+    { re: /\b(\d+\.?\d*(?:px|em|rem|%|vh|vw|s|ms)?)\b/g, cls: 'num' },
+    { re: /(#[0-9a-fA-F]{3,8})\b/g, cls: 'num' },
+    { re: /(@media|@keyframes|@import|@font-face|!important)\b/g, cls: 'kw' }
+  ],
+  json: [
+    { re: /("(?:\\.|[^"\\])*")\s*:/g, cls: 'attr' },
+    { re: /:\s*("(?:\\.|[^"\\])*")/g, cls: 'str' },
+    { re: /\b(\d+\.?\d*)\b/g, cls: 'num' },
+    { re: /\b(true|false|null)\b/g, cls: 'kw' }
+  ],
+  plain: []
+};
+
+function highlight(text, language) {
+  /* Escape HTML */
+  let html = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+  const rules = RULES[language] || [];
+  /* Apply rules in order — simple approach, may overlap but good enough */
+  const tokens = [];
+  rules.forEach(rule => {
+    let match;
+    const re = new RegExp(rule.re.source, rule.re.flags);
+    while ((match = re.exec(html)) !== null) {
+      tokens.push({ start: match.index, end: match.index + match[0].length, cls: rule.cls, text: match[0] });
+    }
+  });
+
+  /* Sort by position, apply non-overlapping */
+  tokens.sort((a, b) => a.start - b.start);
+  let result = '', lastEnd = 0;
+  tokens.forEach(t => {
+    if (t.start >= lastEnd) {
+      result += html.slice(lastEnd, t.start);
+      result += `<span class="${t.cls}">${t.text}</span>`;
+      lastEnd = t.end;
+    }
+  });
+  result += html.slice(lastEnd);
+
+  return result;
+}
+
+function updateUI() {
+  const text = editor.value;
+  const lines = text.split('\n');
+
+  /* Line numbers */
+  const lineNums = $('lineNums');
+  const curLine = text.substring(0, editor.selectionStart).split('\n').length;
+  lineNums.innerHTML = lines.map((_, i) =>
+    `<div class="ln${i + 1 === curLine ? ' active' : ''}">${i + 1}</div>`
+  ).join('');
+
+  /* Syntax highlight */
+  $('syntaxOverlay').innerHTML = highlight(text, lang);
+
+  /* Footer */
+  $('fLines').textContent = lines.length;
+  $('fChars').textContent = text.length;
+  const cursorPos = editor.selectionStart;
+  const beforeCursor = text.substring(0, cursorPos).split('\n');
+  $('fCursor').textContent = `${beforeCursor.length}:${beforeCursor[beforeCursor.length - 1].length + 1}`;
+}
+
+/* Sync line numbers scroll */
+editor.addEventListener('scroll', () => {
+  $('lineNums').scrollTop = editor.scrollTop;
+  $('syntaxOverlay').scrollTop = editor.scrollTop;
+});
+
+let syncTimer = null;
+editor.addEventListener('input', () => {
+  updateUI();
+  clearTimeout(syncTimer);
+  syncTimer = setTimeout(syncDoc, 50);
+});
+editor.addEventListener('click', updateUI);
+editor.addEventListener('keyup', updateUI);
+
+/* Tab key */
+editor.addEventListener('keydown', (e) => {
+  if (e.key === 'Tab') {
+    e.preventDefault();
+    const start = editor.selectionStart;
+    editor.value = editor.value.substring(0, start) + '  ' + editor.value.substring(editor.selectionEnd);
+    editor.selectionStart = editor.selectionEnd = start + 2;
+    updateUI();
+  }
+});
+
+$('langSel').addEventListener('change', () => { lang = $('langSel').value; updateUI(); });
+
+$('exportBtn').addEventListener('click', () => {
+  const blob = new Blob([editor.value], { type: 'text/plain' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  const ext = { javascript: 'js', python: 'py', html: 'html', css: 'css', json: 'json', plain: 'txt' };
+  a.download = 'document.' + (ext[lang] || 'txt');
+  a.href = url; a.click();
+  URL.revokeObjectURL(url);
+});
+
+/* WebRTC */
+function setupDC(channel) {
+  dc = channel;
+  dc.onopen = () => {
+    $('statusPill').textContent = 'Connected';
+    $('statusPill').classList.add('on');
+    $('connPanel').classList.add('hidden');
+    /* Send current doc */
+    syncDoc();
+  };
+  dc.onclose = () => {
+    $('statusPill').textContent = 'Disconnected';
+    $('statusPill').classList.remove('on');
+    if (remoteCursorEl) remoteCursorEl.style.display = 'none';
+  };
+  dc.onmessage = (e) => {
+    const msg = JSON.parse(e.data);
+    if (msg.type === 'doc') {
+      opCount++;
+      $('fOps').textContent = opCount;
+      applySyncDoc(msg);
+    } else if (msg.type === 'cursor') {
+      showRemoteCursor(msg.pos, msg.userId);
+    }
+  };
+}
+
+/* Send cursor position changes */
+setInterval(() => {
+  if (dc && dc.readyState === 'open') {
+    dc.send(JSON.stringify({ type: 'cursor', pos: editor.selectionStart, userId: myId }));
+  }
+}, 200);
+
+$('connectBtn').addEventListener('click', () => $('connPanel').classList.toggle('hidden'));
+
+$('createRoom').addEventListener('click', async () => {
+  pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
+  const channel = pc.createDataChannel('editor', { ordered: true });
+  setupDC(channel);
+  const offer = await pc.createOffer();
+  await pc.setLocalDescription(offer);
+  await new Promise(r => {
+    if (pc.iceGatheringState === 'complete') return r();
+    pc.onicegatheringstatechange = () => { if (pc.iceGatheringState === 'complete') r(); };
+  });
+  $('offerText').value = btoa(JSON.stringify(pc.localDescription));
+  $('cpOffer').style.display = 'block'; $('cpJoin').style.display = 'none';
+});
+
+$('copyOffer').addEventListener('click', () => {
+  navigator.clipboard.writeText($('offerText').value);
+  $('copyOffer').textContent = 'Copied!';
+  setTimeout(() => $('copyOffer').textContent = 'Copy', 1500);
+});
+
+$('acceptAns').addEventListener('click', async () => {
+  try {
+    await pc.setRemoteDescription(JSON.parse(atob($('answerIn').value.trim())));
+  } catch (e) { alert('Invalid answer.'); }
+});
+
+$('joinRoom').addEventListener('click', () => {
+  $('cpJoin').style.display = 'block'; $('cpOffer').style.display = 'none';
+});
+
+$('genAns').addEventListener('click', async () => {
+  try {
+    pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
+    pc.ondatachannel = (e) => setupDC(e.channel);
+    await pc.setRemoteDescription(JSON.parse(atob($('offerIn').value.trim())));
+    const answer = await pc.createAnswer();
+    await pc.setLocalDescription(answer);
+    await new Promise(r => {
+      if (pc.iceGatheringState === 'complete') return r();
+      pc.onicegatheringstatechange = () => { if (pc.iceGatheringState === 'complete') r(); };
+    });
+    $('answerText').value = btoa(JSON.stringify(pc.localDescription));
+    $('ansOut').style.display = 'block';
+  } catch (e) { alert('Invalid offer.'); }
+});
+
+$('copyAns').addEventListener('click', () => {
+  navigator.clipboard.writeText($('answerText').value);
+  $('copyAns').textContent = 'Copied!';
+  setTimeout(() => $('copyAns').textContent = 'Copy', 1500);
+});
+
+/* Init */
+editor.value = `// Welcome to P2P Collaborative Editor
+// Connect a peer to start editing together
+
+function fibonacci(n) {
+  if (n <= 1) return n;
+  return fibonacci(n - 1) + fibonacci(n - 2);
+}
+
+const result = fibonacci(10);
+console.log("Fibonacci(10) =", result);
+
+// Try editing simultaneously with a peer!
+// Both cursors are visible in real-time.
+`;
+updateUI();
+</script>
+<script src="/related.js"></script>
+</body>
+</html>

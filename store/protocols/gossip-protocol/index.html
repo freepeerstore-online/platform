@@ -1,0 +1,456 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Gossip Protocol Simulator — FreePeerStore</title>
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: #0a0a0a; color: #e4e4e7; font-family: 'Manrope', sans-serif; min-height: 100vh; }
+    a { color: #a855f7; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+
+    .header { padding: 1rem 2rem; border-bottom: 1px solid #27272a; display: flex; align-items: center; gap: 1rem; }
+    .header .back { color: #71717a; font-size: 0.85rem; }
+    .header h1 { font-size: 1.1rem; font-weight: 700; }
+    .header h1 span { color: #a855f7; }
+
+    .layout { display: flex; height: calc(100vh - 53px); }
+    .sidebar { width: 280px; min-width: 280px; border-right: 1px solid #27272a; padding: 1.25rem; overflow-y: auto; display: flex; flex-direction: column; gap: 0.75rem; }
+    .main { flex: 1; position: relative; cursor: crosshair; }
+    canvas { display: block; width: 100%; height: 100%; }
+
+    label { font-size: 0.8rem; color: #a1a1aa; display: block; margin-bottom: 4px; }
+    .control { margin-bottom: 0.5rem; }
+    input[type=range] { width: 100%; accent-color: #a855f7; }
+    .val { font-family: 'JetBrains Mono', monospace; color: #a855f7; font-size: 0.8rem; }
+
+    .btn {
+      background: #a855f7; color: #fff; border: none; padding: 10px 20px;
+      border-radius: 8px; cursor: pointer; font-family: 'Manrope', sans-serif;
+      font-weight: 600; font-size: 0.85rem; width: 100%; transition: background 0.2s;
+    }
+    .btn:hover { background: #9333ea; }
+    .btn.secondary { background: #27272a; color: #e4e4e7; }
+    .btn.secondary:hover { background: #3f3f46; }
+
+    .mode-toggle { display: flex; gap: 4px; margin-bottom: 0.5rem; }
+    .mode-btn {
+      flex: 1; padding: 6px; text-align: center; font-size: 0.72rem; font-weight: 600;
+      background: #18181b; border: 1px solid #27272a; border-radius: 6px;
+      cursor: pointer; color: #a1a1aa; transition: all 0.2s;
+    }
+    .mode-btn.active { background: rgba(168,85,247,0.12); border-color: #a855f7; color: #a855f7; }
+
+    .stats {
+      background: #18181b; border: 1px solid #27272a; border-radius: 8px;
+      padding: 0.75rem; font-family: 'JetBrains Mono', monospace; font-size: 0.75rem;
+    }
+    .stats .row { display: flex; justify-content: space-between; padding: 3px 0; }
+    .stats .lbl { color: #71717a; }
+    .stats .hl { color: #a855f7; }
+
+    .hint {
+      background: #18181b; border: 1px solid #27272a; border-radius: 8px;
+      padding: 0.75rem; font-size: 0.75rem; color: #71717a; line-height: 1.5;
+    }
+    .hint b { color: #a1a1aa; }
+
+    @media (max-width: 768px) {
+      .layout { flex-direction: column; }
+      .sidebar { width: 100%; min-width: 0; max-height: 40vh; border-right: none; border-bottom: 1px solid #27272a; }
+    }
+  </style>
+</head>
+<body>
+
+<div class="header">
+  <a href="/" class="back">FreePeerStore</a>
+  <h1><span>Gossip</span> Protocol Simulator</h1>
+</div>
+
+<div class="layout">
+  <div class="sidebar">
+    <div class="control">
+      <label>Fan-out (peers per tick): <span class="val" id="fanVal">2</span></label>
+      <input type="range" id="fanout" min="1" max="5" value="2">
+    </div>
+    <div class="control">
+      <label>Message loss rate: <span class="val" id="lossVal">0%</span></label>
+      <input type="range" id="loss" min="0" max="50" value="0">
+    </div>
+    <div class="control">
+      <label>Tick speed (ms): <span class="val" id="tickVal">300</span></label>
+      <input type="range" id="tickSpeed" min="100" max="1000" value="300" step="50">
+    </div>
+
+    <div class="mode-toggle">
+      <div class="mode-btn active" data-mode="gossip">Gossip</div>
+      <div class="mode-btn" data-mode="flooding">Flooding</div>
+      <div class="mode-btn" data-mode="tree">Tree</div>
+    </div>
+
+    <button class="btn" id="startBtn">Start</button>
+    <button class="btn secondary" id="resetBtn" style="margin-top:4px">Reset</button>
+
+    <div class="stats">
+      <div class="row"><span class="lbl">Tick</span><span id="sTick">0</span></div>
+      <div class="row"><span class="lbl">Informed</span><span class="hl" id="sInformed">0 / 30</span></div>
+      <div class="row"><span class="lbl">Messages sent</span><span id="sMsgs">0</span></div>
+      <div class="row"><span class="lbl">Convergence</span><span id="sConv">-</span></div>
+      <div class="row"><span class="lbl">Redundant msgs</span><span id="sRedun">0</span></div>
+    </div>
+
+    <div class="hint">
+      <b>Click</b> any node to infect it with new information.
+      <b>Drag</b> across the canvas to create a network partition line.
+    </div>
+  </div>
+
+  <div class="main">
+    <canvas id="canvas"></canvas>
+  </div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const canvas = $('canvas'), ctx = canvas.getContext('2d');
+
+const NODE_COUNT = 30;
+let nodes = [], tick = 0, running = false, loopId = null;
+let fanout = 2, lossRate = 0, tickSpeed = 300;
+let mode = 'gossip';
+let messages = 0, redundant = 0, convergenceTick = null;
+let transfers = []; /* animated arrows */
+let partitionLine = null; /* {x1,y1,x2,y2} */
+let dragging = false, dragStart = null;
+let treeEdges = [];
+
+function resize() {
+  const dpr = window.devicePixelRatio || 1;
+  const rect = canvas.parentElement.getBoundingClientRect();
+  canvas.width = rect.width * dpr;
+  canvas.height = rect.height * dpr;
+  ctx.scale(dpr, dpr);
+  canvas.style.width = rect.width + 'px';
+  canvas.style.height = rect.height + 'px';
+}
+
+function W() { return canvas.width / (window.devicePixelRatio || 1); }
+function H() { return canvas.height / (window.devicePixelRatio || 1); }
+
+function init() {
+  const w = W(), h = H();
+  const pad = 40;
+  nodes = Array.from({ length: NODE_COUNT }, (_, i) => ({
+    id: i,
+    x: pad + Math.random() * (w - pad * 2),
+    y: pad + Math.random() * (h - pad * 2),
+    informed: false,
+    informedTick: -1,
+    parent: null /* for tree mode */
+  }));
+  tick = 0; messages = 0; redundant = 0; convergenceTick = null;
+  transfers = [];
+  partitionLine = null;
+  buildTree();
+  updateStats();
+  draw();
+}
+
+function buildTree() {
+  /* Build a spanning tree from node 0 using BFS based on proximity */
+  treeEdges = [];
+  if (nodes.length === 0) return;
+  const visited = new Set([0]);
+  const queue = [0];
+  while (queue.length > 0) {
+    const cur = queue.shift();
+    /* Find closest unvisited neighbors */
+    const dists = nodes
+      .filter(n => !visited.has(n.id))
+      .map(n => ({ id: n.id, d: Math.hypot(n.x - nodes[cur].x, n.y - nodes[cur].y) }))
+      .sort((a, b) => a.d - b.d);
+    const take = dists.slice(0, 3); /* max 3 children */
+    take.forEach(t => {
+      visited.add(t.id);
+      queue.push(t.id);
+      treeEdges.push([cur, t.id]);
+      nodes[t.id].parent = cur;
+    });
+  }
+}
+
+function samePartitionSide(a, b) {
+  if (!partitionLine) return true;
+  const { x1, y1, x2, y2 } = partitionLine;
+  const sideA = (x2 - x1) * (a.y - y1) - (y2 - y1) * (a.x - x1);
+  const sideB = (x2 - x1) * (b.y - y1) - (y2 - y1) * (b.x - x1);
+  return (sideA >= 0) === (sideB >= 0);
+}
+
+function step() {
+  const newTransfers = [];
+  const informedNodes = nodes.filter(n => n.informed);
+
+  if (mode === 'gossip') {
+    informedNodes.forEach(sender => {
+      const reachable = nodes.filter(n => n.id !== sender.id && samePartitionSide(sender, n));
+      /* Pick random fan-out peers */
+      const shuffled = reachable.sort(() => Math.random() - 0.5).slice(0, fanout);
+      shuffled.forEach(target => {
+        if (Math.random() * 100 < lossRate) return; /* message lost */
+        messages++;
+        if (target.informed) {
+          redundant++;
+        } else {
+          target.informed = true;
+          target.informedTick = tick;
+        }
+        newTransfers.push({ from: sender, to: target });
+      });
+    });
+  } else if (mode === 'flooding') {
+    informedNodes.forEach(sender => {
+      const reachable = nodes.filter(n => n.id !== sender.id && samePartitionSide(sender, n));
+      reachable.forEach(target => {
+        if (Math.random() * 100 < lossRate) return;
+        messages++;
+        if (target.informed) {
+          redundant++;
+        } else {
+          target.informed = true;
+          target.informedTick = tick;
+          newTransfers.push({ from: sender, to: target });
+        }
+      });
+    });
+  } else if (mode === 'tree') {
+    informedNodes.forEach(sender => {
+      /* Only send to tree children/parent */
+      const neighbors = treeEdges
+        .filter(([a, b]) => a === sender.id || b === sender.id)
+        .map(([a, b]) => a === sender.id ? b : a);
+      neighbors.forEach(nid => {
+        const target = nodes[nid];
+        if (!samePartitionSide(sender, target)) return;
+        if (Math.random() * 100 < lossRate) return;
+        messages++;
+        if (target.informed) {
+          redundant++;
+        } else {
+          target.informed = true;
+          target.informedTick = tick;
+          newTransfers.push({ from: sender, to: target });
+        }
+      });
+    });
+  }
+
+  transfers = newTransfers;
+  tick++;
+
+  if (!convergenceTick && nodes.every(n => n.informed)) {
+    convergenceTick = tick;
+  }
+  updateStats();
+}
+
+function updateStats() {
+  const informed = nodes.filter(n => n.informed).length;
+  $('sTick').textContent = tick;
+  $('sInformed').textContent = `${informed} / ${NODE_COUNT}`;
+  $('sMsgs').textContent = messages;
+  $('sConv').textContent = convergenceTick ? `Tick ${convergenceTick}` : informed === NODE_COUNT ? `Tick ${tick}` : '-';
+  $('sRedun').textContent = redundant;
+}
+
+function draw() {
+  const w = W(), h = H();
+  ctx.clearRect(0, 0, w, h);
+
+  /* Partition line */
+  if (partitionLine) {
+    ctx.beginPath();
+    ctx.moveTo(partitionLine.x1, partitionLine.y1);
+    ctx.lineTo(partitionLine.x2, partitionLine.y2);
+    ctx.strokeStyle = '#ef4444';
+    ctx.lineWidth = 2;
+    ctx.setLineDash([8, 6]);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    ctx.fillStyle = '#ef4444';
+    ctx.font = '10px JetBrains Mono';
+    ctx.textAlign = 'center';
+    ctx.fillText('PARTITION', (partitionLine.x1 + partitionLine.x2) / 2, (partitionLine.y1 + partitionLine.y2) / 2 - 10);
+  }
+
+  /* Tree edges (if tree mode) */
+  if (mode === 'tree') {
+    treeEdges.forEach(([a, b]) => {
+      ctx.beginPath();
+      ctx.moveTo(nodes[a].x, nodes[a].y);
+      ctx.lineTo(nodes[b].x, nodes[b].y);
+      ctx.strokeStyle = '#27272a';
+      ctx.lineWidth = 1;
+      ctx.stroke();
+    });
+  }
+
+  /* Transfer arrows */
+  transfers.forEach(t => {
+    ctx.beginPath();
+    ctx.moveTo(t.from.x, t.from.y);
+    ctx.lineTo(t.to.x, t.to.y);
+    ctx.strokeStyle = 'rgba(168,85,247,0.4)';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+
+    /* Arrow head */
+    const angle = Math.atan2(t.to.y - t.from.y, t.to.x - t.from.x);
+    const ax = t.to.x - Math.cos(angle) * 14;
+    const ay = t.to.y - Math.sin(angle) * 14;
+    ctx.beginPath();
+    ctx.moveTo(ax, ay);
+    ctx.lineTo(ax - 6 * Math.cos(angle - 0.5), ay - 6 * Math.sin(angle - 0.5));
+    ctx.lineTo(ax - 6 * Math.cos(angle + 0.5), ay - 6 * Math.sin(angle + 0.5));
+    ctx.fillStyle = '#a855f7';
+    ctx.fill();
+  });
+
+  /* Nodes */
+  nodes.forEach(n => {
+    const r = 12;
+    ctx.beginPath();
+    ctx.arc(n.x, n.y, r, 0, Math.PI * 2);
+
+    if (n.informed) {
+      const age = tick - n.informedTick;
+      const glow = Math.max(0.5, 1 - age * 0.1);
+      ctx.fillStyle = `rgba(168,85,247,${glow})`;
+      ctx.strokeStyle = '#c084fc';
+    } else {
+      ctx.fillStyle = '#18181b';
+      ctx.strokeStyle = '#3f3f46';
+    }
+    ctx.fill();
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+
+    /* Ripple effect on newly informed */
+    if (n.informed && tick - n.informedTick <= 2) {
+      const ripple = (tick - n.informedTick) * 8 + r;
+      ctx.beginPath();
+      ctx.arc(n.x, n.y, ripple, 0, Math.PI * 2);
+      ctx.strokeStyle = `rgba(168,85,247,${0.3 - (tick - n.informedTick) * 0.1})`;
+      ctx.lineWidth = 1;
+      ctx.stroke();
+    }
+
+    ctx.fillStyle = n.informed ? '#fff' : '#71717a';
+    ctx.font = '8px JetBrains Mono';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(n.id, n.x, n.y);
+  });
+
+  /* Mode label */
+  ctx.fillStyle = '#3f3f46';
+  ctx.font = '11px Manrope';
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'top';
+  const labels = { gossip: 'Gossip Protocol', flooding: 'Flooding', tree: 'Tree Broadcast' };
+  ctx.fillText(labels[mode], 16, 12);
+}
+
+/* Click to infect */
+canvas.addEventListener('click', (e) => {
+  if (dragging) return;
+  const rect = canvas.getBoundingClientRect();
+  const mx = e.clientX - rect.left, my = e.clientY - rect.top;
+  nodes.forEach(n => {
+    if (Math.hypot(mx - n.x, my - n.y) < 16 && !n.informed) {
+      n.informed = true;
+      n.informedTick = tick;
+      updateStats();
+      draw();
+    }
+  });
+});
+
+/* Drag for partition */
+canvas.addEventListener('mousedown', (e) => {
+  const rect = canvas.getBoundingClientRect();
+  dragStart = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+  /* Check if near a node — if so, don't start partition drag */
+  const nearNode = nodes.some(n => Math.hypot(dragStart.x - n.x, dragStart.y - n.y) < 16);
+  if (nearNode) { dragStart = null; return; }
+  dragging = true;
+});
+canvas.addEventListener('mousemove', (e) => {
+  if (!dragging || !dragStart) return;
+  const rect = canvas.getBoundingClientRect();
+  partitionLine = {
+    x1: dragStart.x, y1: dragStart.y,
+    x2: e.clientX - rect.left, y2: e.clientY - rect.top
+  };
+  draw();
+});
+canvas.addEventListener('mouseup', () => { dragging = false; });
+
+/* Controls */
+$('fanout').addEventListener('input', () => { fanout = +$('fanout').value; $('fanVal').textContent = fanout; });
+$('loss').addEventListener('input', () => { lossRate = +$('loss').value; $('lossVal').textContent = lossRate + '%'; });
+$('tickSpeed').addEventListener('input', () => {
+  tickSpeed = +$('tickSpeed').value;
+  $('tickVal').textContent = tickSpeed;
+  if (running) { clearInterval(loopId); loopId = setInterval(() => { step(); draw(); }, tickSpeed); }
+});
+
+document.querySelectorAll('.mode-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelector('.mode-btn.active').classList.remove('active');
+    btn.classList.add('active');
+    mode = btn.dataset.mode;
+  });
+});
+
+$('startBtn').addEventListener('click', () => {
+  if (running) {
+    running = false; clearInterval(loopId);
+    $('startBtn').textContent = 'Start';
+    return;
+  }
+  /* If no node is informed, infect a random one */
+  if (!nodes.some(n => n.informed)) {
+    const r = nodes[Math.floor(Math.random() * nodes.length)];
+    r.informed = true; r.informedTick = tick;
+  }
+  running = true;
+  $('startBtn').textContent = 'Pause';
+  loopId = setInterval(() => {
+    step(); draw();
+    if (nodes.every(n => n.informed)) {
+      running = false; clearInterval(loopId);
+      $('startBtn').textContent = 'Converged!';
+    }
+  }, tickSpeed);
+});
+
+$('resetBtn').addEventListener('click', () => {
+  running = false; clearInterval(loopId);
+  $('startBtn').textContent = 'Start';
+  init();
+});
+
+window.addEventListener('resize', () => { resize(); draw(); });
+
+resize();
+init();
+</script>
+<script src="/related.js"></script>
+</body>
+</html>

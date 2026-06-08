@@ -1,0 +1,463 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>P2P Collaborative Whiteboard — FreePeerStore</title>
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: #0a0a0a; color: #e4e4e7; font-family: 'Manrope', sans-serif; height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+    a { color: #a855f7; text-decoration: none; }
+
+    .header {
+      padding: 0.5rem 1rem; border-bottom: 1px solid #27272a;
+      display: flex; align-items: center; gap: 0.75rem; flex-shrink: 0;
+    }
+    .header .back { color: #71717a; font-size: 0.8rem; }
+    .header h1 { font-size: 0.95rem; font-weight: 700; }
+    .header h1 span { color: #a855f7; }
+    .header .spacer { flex: 1; }
+    .header .status { font-size: 0.7rem; font-family: 'JetBrains Mono', monospace; color: #71717a; }
+    .header .dot { width: 7px; height: 7px; border-radius: 50%; display: inline-block; }
+
+    .toolbar {
+      padding: 0.5rem 1rem; border-bottom: 1px solid #27272a;
+      display: flex; align-items: center; gap: 8px; flex-shrink: 0; flex-wrap: wrap;
+    }
+    .tool-btn {
+      width: 36px; height: 36px; border-radius: 8px; border: 1px solid #27272a;
+      background: #18181b; color: #a1a1aa; cursor: pointer; display: flex;
+      align-items: center; justify-content: center; font-size: 0.9rem;
+      transition: all 0.2s;
+    }
+    .tool-btn:hover { border-color: #3f3f46; color: #e4e4e7; }
+    .tool-btn.active { border-color: #a855f7; color: #a855f7; background: rgba(168,85,247,0.1); }
+
+    .color-btn {
+      width: 28px; height: 28px; border-radius: 50%; cursor: pointer;
+      border: 2px solid transparent; transition: border-color 0.2s;
+    }
+    .color-btn.active { border-color: #fff; }
+
+    .sep { width: 1px; height: 28px; background: #27272a; }
+
+    input[type=range].small { width: 80px; accent-color: #a855f7; }
+    .range-label { font-size: 0.7rem; color: #71717a; font-family: 'JetBrains Mono', monospace; }
+
+    .btn-sm {
+      padding: 6px 12px; border-radius: 6px; border: 1px solid #27272a;
+      background: #18181b; color: #a1a1aa; cursor: pointer; font-size: 0.75rem;
+      font-family: 'Manrope', sans-serif; font-weight: 600; transition: all 0.2s;
+    }
+    .btn-sm:hover { border-color: #3f3f46; color: #e4e4e7; }
+    .btn-sm.primary { background: #a855f7; color: #fff; border-color: #a855f7; }
+
+    .canvas-wrap { flex: 1; position: relative; overflow: hidden; background: #111; cursor: crosshair; }
+    canvas { display: block; }
+
+    /* Connection panel */
+    .conn-panel {
+      position: absolute; top: 12px; right: 12px; background: #18181b;
+      border: 1px solid #27272a; border-radius: 10px; padding: 1rem;
+      width: 280px; z-index: 10; font-size: 0.8rem;
+    }
+    .conn-panel h3 { font-size: 0.85rem; margin-bottom: 0.5rem; }
+    .conn-panel textarea {
+      width: 100%; height: 60px; background: #0a0a0a; border: 1px solid #27272a;
+      color: #e4e4e7; padding: 6px; border-radius: 6px; font-family: 'JetBrains Mono', monospace;
+      font-size: 0.6rem; resize: none; margin-bottom: 0.5rem;
+    }
+    .conn-panel textarea:focus { outline: none; border-color: #a855f7; }
+    .conn-panel .btn-row { display: flex; gap: 4px; margin-bottom: 0.5rem; }
+    .conn-panel .btn-row button { flex: 1; }
+    .conn-panel.hidden { display: none; }
+
+    @media (max-width: 640px) {
+      .toolbar { gap: 4px; padding: 0.4rem 0.5rem; }
+      .tool-btn { width: 32px; height: 32px; font-size: 0.8rem; }
+    }
+  </style>
+</head>
+<body>
+
+<div class="header">
+  <a href="/" class="back">FreePeerStore</a>
+  <h1><span>P2P</span> Whiteboard</h1>
+  <div class="spacer"></div>
+  <span class="status" id="statusText">Solo mode</span>
+  <span class="dot" id="statusDot" style="background:#71717a"></span>
+</div>
+
+<div class="toolbar">
+  <button class="tool-btn active" data-tool="brush" title="Brush">&#x270F;</button>
+  <button class="tool-btn" data-tool="eraser" title="Eraser">&#x1F9F9;</button>
+  <button class="tool-btn" data-tool="line" title="Line">&#x2571;</button>
+  <button class="tool-btn" data-tool="rect" title="Rectangle">&#x25A1;</button>
+  <button class="tool-btn" data-tool="circle" title="Circle">&#x25CB;</button>
+  <button class="tool-btn" data-tool="text" title="Text">T</button>
+
+  <div class="sep"></div>
+
+  <div class="color-btn active" data-color="#e4e4e7" style="background:#e4e4e7"></div>
+  <div class="color-btn" data-color="#a855f7" style="background:#a855f7"></div>
+  <div class="color-btn" data-color="#3b82f6" style="background:#3b82f6"></div>
+  <div class="color-btn" data-color="#22c55e" style="background:#22c55e"></div>
+  <div class="color-btn" data-color="#ef4444" style="background:#ef4444"></div>
+  <div class="color-btn" data-color="#f59e0b" style="background:#f59e0b"></div>
+
+  <div class="sep"></div>
+
+  <span class="range-label" id="sizeLabel">3px</span>
+  <input type="range" class="small" id="brushSize" min="1" max="20" value="3">
+
+  <div class="sep"></div>
+
+  <button class="btn-sm" id="undoBtn">Undo</button>
+  <button class="btn-sm" id="clearBtn">Clear</button>
+  <button class="btn-sm" id="exportBtn">Export PNG</button>
+  <button class="btn-sm primary" id="connectBtn">Connect Peer</button>
+</div>
+
+<div class="canvas-wrap" id="canvasWrap">
+  <canvas id="canvas"></canvas>
+
+  <div class="conn-panel hidden" id="connPanel">
+    <h3>P2P Connection</h3>
+    <div class="btn-row">
+      <button class="btn-sm primary" id="createRoom">Create Room</button>
+      <button class="btn-sm" id="joinRoom">Join Room</button>
+    </div>
+    <div id="connOffer" style="display:none">
+      <span style="font-size:0.7rem;color:#71717a">Your offer (send to peer):</span>
+      <textarea id="offerText" readonly></textarea>
+      <button class="btn-sm" id="copyOffer" style="width:100%">Copy Offer</button>
+      <span style="font-size:0.7rem;color:#71717a;margin-top:0.5rem;display:block">Paste answer:</span>
+      <textarea id="answerInput" placeholder="Paste answer..."></textarea>
+      <button class="btn-sm primary" id="acceptAnswer" style="width:100%">Accept</button>
+    </div>
+    <div id="connJoin" style="display:none">
+      <span style="font-size:0.7rem;color:#71717a">Paste offer:</span>
+      <textarea id="offerInput" placeholder="Paste offer..."></textarea>
+      <button class="btn-sm primary" id="genAnswer" style="width:100%">Generate Answer</button>
+      <div id="answerOut" style="display:none">
+        <span style="font-size:0.7rem;color:#71717a;margin-top:0.5rem;display:block">Your answer (send to peer):</span>
+        <textarea id="answerText" readonly></textarea>
+        <button class="btn-sm" id="copyAnswer" style="width:100%">Copy Answer</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const canvas = $('canvas'), ctx = canvas.getContext('2d');
+const ICE_SERVERS = [{ urls: 'stun:stun.l.google.com:19302' }];
+
+let pc = null, dc = null;
+let tool = 'brush', color = '#e4e4e7', brushSize = 3;
+let drawing = false, startX = 0, startY = 0;
+let strokes = []; /* [{type, points/params, color, size, userId}] */
+let currentStroke = null;
+let myId = Math.random().toString(36).slice(2, 6);
+let peerCursor = null; /* {x,y} */
+let snapshot = null; /* ImageData for shape preview */
+
+function resize() {
+  const dpr = window.devicePixelRatio || 1;
+  const wrap = $('canvasWrap');
+  canvas.width = wrap.clientWidth * dpr;
+  canvas.height = wrap.clientHeight * dpr;
+  ctx.scale(dpr, dpr);
+  canvas.style.width = wrap.clientWidth + 'px';
+  canvas.style.height = wrap.clientHeight + 'px';
+  redraw();
+}
+
+function W() { return canvas.width / (window.devicePixelRatio || 1); }
+function H() { return canvas.height / (window.devicePixelRatio || 1); }
+
+function redraw() {
+  ctx.fillStyle = '#111';
+  ctx.fillRect(0, 0, W(), H());
+  strokes.forEach(s => drawStroke(s));
+  if (peerCursor) {
+    ctx.beginPath();
+    ctx.arc(peerCursor.x, peerCursor.y, 4, 0, Math.PI * 2);
+    ctx.fillStyle = '#a855f7';
+    ctx.fill();
+  }
+}
+
+function drawStroke(s) {
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+
+  if (s.type === 'brush' || s.type === 'eraser') {
+    ctx.strokeStyle = s.type === 'eraser' ? '#111' : s.color;
+    ctx.lineWidth = s.size;
+    if (s.points.length < 2) return;
+    ctx.beginPath();
+    ctx.moveTo(s.points[0].x, s.points[0].y);
+    for (let i = 1; i < s.points.length; i++) ctx.lineTo(s.points[i].x, s.points[i].y);
+    ctx.stroke();
+  } else if (s.type === 'line') {
+    ctx.strokeStyle = s.color;
+    ctx.lineWidth = s.size;
+    ctx.beginPath();
+    ctx.moveTo(s.x1, s.y1);
+    ctx.lineTo(s.x2, s.y2);
+    ctx.stroke();
+  } else if (s.type === 'rect') {
+    ctx.strokeStyle = s.color;
+    ctx.lineWidth = s.size;
+    ctx.strokeRect(s.x, s.y, s.w, s.h);
+  } else if (s.type === 'circle') {
+    ctx.strokeStyle = s.color;
+    ctx.lineWidth = s.size;
+    ctx.beginPath();
+    ctx.ellipse(s.cx, s.cy, Math.abs(s.rx), Math.abs(s.ry), 0, 0, Math.PI * 2);
+    ctx.stroke();
+  } else if (s.type === 'text') {
+    ctx.fillStyle = s.color;
+    ctx.font = `${s.size * 5}px Manrope`;
+    ctx.fillText(s.text, s.x, s.y);
+  }
+}
+
+function getPos(e) {
+  const rect = canvas.getBoundingClientRect();
+  return { x: e.clientX - rect.left, y: e.clientY - rect.top };
+}
+
+canvas.addEventListener('mousedown', (e) => {
+  const p = getPos(e);
+  drawing = true;
+  startX = p.x; startY = p.y;
+
+  if (tool === 'brush' || tool === 'eraser') {
+    currentStroke = { type: tool, points: [p], color, size: brushSize, userId: myId };
+    strokes.push(currentStroke);
+  } else if (tool === 'text') {
+    const text = prompt('Enter text:');
+    if (text) {
+      const s = { type: 'text', text, x: p.x, y: p.y, color, size: brushSize, userId: myId };
+      strokes.push(s);
+      sendOp(s);
+      redraw();
+    }
+    drawing = false;
+  } else {
+    /* Save snapshot for shape preview */
+    snapshot = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  }
+});
+
+canvas.addEventListener('mousemove', (e) => {
+  const p = getPos(e);
+  sendCursor(p);
+
+  if (!drawing) return;
+
+  if (tool === 'brush' || tool === 'eraser') {
+    currentStroke.points.push(p);
+    drawStroke(currentStroke);
+  } else if (snapshot) {
+    /* Preview shape */
+    ctx.putImageData(snapshot, 0, 0);
+    const previewStroke = makeShape(p);
+    if (previewStroke) drawStroke(previewStroke);
+  }
+});
+
+canvas.addEventListener('mouseup', (e) => {
+  if (!drawing) return;
+  const p = getPos(e);
+
+  if (tool === 'brush' || tool === 'eraser') {
+    if (currentStroke) sendOp(currentStroke);
+    currentStroke = null;
+  } else if (tool !== 'text') {
+    const s = makeShape(p);
+    if (s) {
+      strokes.push(s);
+      sendOp(s);
+      redraw();
+    }
+    snapshot = null;
+  }
+  drawing = false;
+});
+
+canvas.addEventListener('mouseleave', () => { drawing = false; snapshot = null; });
+
+function makeShape(p) {
+  if (tool === 'line') return { type: 'line', x1: startX, y1: startY, x2: p.x, y2: p.y, color, size: brushSize, userId: myId };
+  if (tool === 'rect') return { type: 'rect', x: Math.min(startX, p.x), y: Math.min(startY, p.y), w: Math.abs(p.x - startX), h: Math.abs(p.y - startY), color, size: brushSize, userId: myId };
+  if (tool === 'circle') return { type: 'circle', cx: (startX + p.x) / 2, cy: (startY + p.y) / 2, rx: (p.x - startX) / 2, ry: (p.y - startY) / 2, color, size: brushSize, userId: myId };
+  return null;
+}
+
+/* Tools */
+document.querySelectorAll('.tool-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelector('.tool-btn.active').classList.remove('active');
+    btn.classList.add('active');
+    tool = btn.dataset.tool;
+  });
+});
+
+document.querySelectorAll('.color-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelector('.color-btn.active').classList.remove('active');
+    btn.classList.add('active');
+    color = btn.dataset.color;
+  });
+});
+
+$('brushSize').addEventListener('input', () => {
+  brushSize = +$('brushSize').value;
+  $('sizeLabel').textContent = brushSize + 'px';
+});
+
+$('undoBtn').addEventListener('click', () => {
+  /* Undo last stroke by this user */
+  for (let i = strokes.length - 1; i >= 0; i--) {
+    if (strokes[i].userId === myId) {
+      strokes.splice(i, 1);
+      redraw();
+      if (dc && dc.readyState === 'open') dc.send(JSON.stringify({ type: 'undo', userId: myId }));
+      break;
+    }
+  }
+});
+
+$('clearBtn').addEventListener('click', () => {
+  strokes = [];
+  redraw();
+  if (dc && dc.readyState === 'open') dc.send(JSON.stringify({ type: 'clear' }));
+});
+
+$('exportBtn').addEventListener('click', () => {
+  const link = document.createElement('a');
+  link.download = 'whiteboard.png';
+  link.href = canvas.toDataURL('image/png');
+  link.click();
+});
+
+/* WebRTC */
+function sendOp(stroke) {
+  if (dc && dc.readyState === 'open') {
+    dc.send(JSON.stringify({ type: 'stroke', data: stroke }));
+  }
+}
+function sendCursor(p) {
+  if (dc && dc.readyState === 'open') {
+    dc.send(JSON.stringify({ type: 'cursor', x: p.x, y: p.y }));
+  }
+}
+
+function setupDC(channel) {
+  dc = channel;
+  dc.onopen = () => {
+    $('statusText').textContent = 'Connected';
+    $('statusDot').style.background = '#22c55e';
+    $('connPanel').classList.add('hidden');
+    /* Send all existing strokes */
+    strokes.forEach(s => dc.send(JSON.stringify({ type: 'stroke', data: s })));
+  };
+  dc.onclose = () => {
+    $('statusText').textContent = 'Disconnected';
+    $('statusDot').style.background = '#ef4444';
+  };
+  dc.onmessage = (e) => {
+    const msg = JSON.parse(e.data);
+    if (msg.type === 'stroke') {
+      strokes.push(msg.data);
+      redraw();
+    } else if (msg.type === 'cursor') {
+      peerCursor = { x: msg.x, y: msg.y };
+      redraw();
+    } else if (msg.type === 'undo') {
+      for (let i = strokes.length - 1; i >= 0; i--) {
+        if (strokes[i].userId === msg.userId) { strokes.splice(i, 1); break; }
+      }
+      redraw();
+    } else if (msg.type === 'clear') {
+      strokes = [];
+      redraw();
+    }
+  };
+}
+
+$('connectBtn').addEventListener('click', () => {
+  $('connPanel').classList.toggle('hidden');
+});
+
+$('createRoom').addEventListener('click', async () => {
+  pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
+  const channel = pc.createDataChannel('whiteboard', { ordered: true });
+  setupDC(channel);
+
+  const offer = await pc.createOffer();
+  await pc.setLocalDescription(offer);
+  await new Promise(r => {
+    if (pc.iceGatheringState === 'complete') return r();
+    pc.onicegatheringstatechange = () => { if (pc.iceGatheringState === 'complete') r(); };
+  });
+
+  $('offerText').value = btoa(JSON.stringify(pc.localDescription));
+  $('connOffer').style.display = 'block';
+  $('connJoin').style.display = 'none';
+});
+
+$('copyOffer').addEventListener('click', () => {
+  navigator.clipboard.writeText($('offerText').value);
+  $('copyOffer').textContent = 'Copied!';
+  setTimeout(() => $('copyOffer').textContent = 'Copy Offer', 1500);
+});
+
+$('acceptAnswer').addEventListener('click', async () => {
+  try {
+    const answer = JSON.parse(atob($('answerInput').value.trim()));
+    await pc.setRemoteDescription(answer);
+  } catch (e) { alert('Invalid answer.'); }
+});
+
+$('joinRoom').addEventListener('click', () => {
+  $('connJoin').style.display = 'block';
+  $('connOffer').style.display = 'none';
+});
+
+$('genAnswer').addEventListener('click', async () => {
+  try {
+    pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
+    pc.ondatachannel = (e) => setupDC(e.channel);
+
+    const offer = JSON.parse(atob($('offerInput').value.trim()));
+    await pc.setRemoteDescription(offer);
+    const answer = await pc.createAnswer();
+    await pc.setLocalDescription(answer);
+    await new Promise(r => {
+      if (pc.iceGatheringState === 'complete') return r();
+      pc.onicegatheringstatechange = () => { if (pc.iceGatheringState === 'complete') r(); };
+    });
+
+    $('answerText').value = btoa(JSON.stringify(pc.localDescription));
+    $('answerOut').style.display = 'block';
+  } catch (e) { alert('Invalid offer.'); }
+});
+
+$('copyAnswer').addEventListener('click', () => {
+  navigator.clipboard.writeText($('answerText').value);
+  $('copyAnswer').textContent = 'Copied!';
+  setTimeout(() => $('copyAnswer').textContent = 'Copy Answer', 1500);
+});
+
+window.addEventListener('resize', resize);
+resize();
+</script>
+<script src="/related.js"></script>
+</body>
+</html>

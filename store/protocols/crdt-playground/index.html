@@ -1,0 +1,537 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CRDT Collaborative Editor — FreePeerStore</title>
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: #0a0a0a; color: #e4e4e7; font-family: 'Manrope', sans-serif; min-height: 100vh; }
+    a { color: #a855f7; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+
+    .header { padding: 1rem 2rem; border-bottom: 1px solid #27272a; display: flex; align-items: center; gap: 1rem; }
+    .header .back { color: #71717a; font-size: 0.85rem; }
+    .header h1 { font-size: 1.1rem; font-weight: 700; }
+    .header h1 span { color: #a855f7; }
+
+    .controls {
+      padding: 1rem 2rem; border-bottom: 1px solid #27272a;
+      display: flex; align-items: center; gap: 1.5rem; flex-wrap: wrap;
+    }
+    label { font-size: 0.8rem; color: #a1a1aa; }
+    .val { font-family: 'JetBrains Mono', monospace; color: #a855f7; font-size: 0.8rem; }
+    input[type=range] { width: 140px; accent-color: #a855f7; vertical-align: middle; }
+    select {
+      background: #18181b; border: 1px solid #27272a; color: #e4e4e7;
+      padding: 6px 10px; border-radius: 6px; font-family: 'JetBrains Mono', monospace;
+      font-size: 0.8rem;
+    }
+    .btn {
+      background: #a855f7; color: #fff; border: none; padding: 8px 16px;
+      border-radius: 6px; cursor: pointer; font-weight: 600; font-size: 0.8rem;
+      transition: background 0.2s;
+    }
+    .btn:hover { background: #9333ea; }
+    .btn.secondary { background: #27272a; color: #e4e4e7; }
+
+    .editors {
+      display: grid; grid-template-columns: 1fr 1fr 1fr;
+      gap: 1px; background: #27272a; flex: 1;
+    }
+    .editor-panel { background: #0a0a0a; display: flex; flex-direction: column; }
+    .editor-header {
+      padding: 0.75rem 1rem; border-bottom: 1px solid #27272a;
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .editor-header .user-name { font-weight: 600; font-size: 0.9rem; }
+    .editor-header .user-dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; margin-right: 6px; }
+    .editor-header .status { font-size: 0.7rem; font-family: 'JetBrains Mono', monospace; }
+    .status.synced { color: #22c55e; }
+    .status.pending { color: #f59e0b; }
+    .status.conflict { color: #ef4444; }
+
+    .editor-area {
+      flex: 1; padding: 0;
+    }
+    .editor-area textarea {
+      width: 100%; height: 100%; background: #0a0a0a; color: #e4e4e7;
+      border: none; padding: 1rem; font-family: 'JetBrains Mono', monospace;
+      font-size: 0.85rem; resize: none; line-height: 1.6;
+    }
+    .editor-area textarea:focus { outline: none; background: #0f0f10; }
+
+    .conflict-log {
+      padding: 0.5rem 1rem; border-top: 1px solid #27272a;
+      font-family: 'JetBrains Mono', monospace; font-size: 0.7rem;
+      max-height: 80px; overflow-y: auto; color: #71717a;
+    }
+    .conflict-log .c-merge { color: #a855f7; }
+    .conflict-log .c-ok { color: #22c55e; }
+
+    .bottom-bar {
+      padding: 0.75rem 2rem; border-top: 1px solid #27272a;
+      display: flex; gap: 2rem; font-size: 0.75rem; font-family: 'JetBrains Mono', monospace;
+      color: #71717a;
+    }
+    .bottom-bar .hl { color: #a855f7; }
+
+    .page { display: flex; flex-direction: column; height: calc(100vh - 53px); }
+
+    /* Counter/Set modes */
+    .counter-panel {
+      background: #18181b; border: 1px solid #27272a; border-radius: 8px;
+      padding: 1.5rem; text-align: center;
+    }
+    .counter-value {
+      font-family: 'JetBrains Mono', monospace; font-size: 3rem;
+      color: #a855f7; font-weight: 700;
+    }
+    .counter-btns { display: flex; gap: 8px; justify-content: center; margin-top: 1rem; }
+    .counter-btns button {
+      background: #27272a; color: #e4e4e7; border: 1px solid #3f3f46;
+      padding: 8px 20px; border-radius: 6px; cursor: pointer; font-size: 1rem; font-weight: 700;
+      transition: all 0.2s;
+    }
+    .counter-btns button:hover { border-color: #a855f7; }
+
+    .set-items {
+      display: flex; flex-wrap: wrap; gap: 6px; margin-top: 0.75rem; min-height: 30px;
+    }
+    .set-item {
+      background: rgba(168,85,247,0.12); border: 1px solid #a855f7; color: #e4e4e7;
+      padding: 4px 10px; border-radius: 6px; font-size: 0.8rem;
+      font-family: 'JetBrains Mono', monospace;
+    }
+    .set-input { display: flex; gap: 6px; margin-top: 0.75rem; }
+    .set-input input {
+      flex: 1; background: #0a0a0a; border: 1px solid #27272a; color: #e4e4e7;
+      padding: 6px 10px; border-radius: 6px; font-family: 'JetBrains Mono', monospace; font-size: 0.8rem;
+    }
+
+    @media (max-width: 900px) {
+      .editors { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+
+<div class="header">
+  <a href="/" class="back">FreePeerStore</a>
+  <h1><span>CRDT</span> Collaborative Editor</h1>
+</div>
+
+<div class="page">
+  <div class="controls">
+    <div>
+      <label>Type:</label>
+      <select id="crdtType">
+        <option value="text">Text (RGA)</option>
+        <option value="gcounter">G-Counter</option>
+        <option value="pncounter">PN-Counter</option>
+        <option value="lww">LWW-Register</option>
+        <option value="orset">OR-Set</option>
+      </select>
+    </div>
+    <div>
+      <label>Network delay: <span class="val" id="delayVal">1s</span></label>
+      <input type="range" id="delay" min="0" max="5000" value="1000" step="250">
+    </div>
+    <div>
+      <label>Packet loss: <span class="val" id="plVal">0%</span></label>
+      <input type="range" id="packetLoss" min="0" max="50" value="0">
+    </div>
+    <button class="btn secondary" id="resetBtn">Reset</button>
+  </div>
+
+  <div class="editors" id="editors"></div>
+
+  <div class="bottom-bar">
+    <span>Operations: <span class="hl" id="opCount">0</span></span>
+    <span>Synced: <span class="hl" id="syncCount">0</span></span>
+    <span>Conflicts resolved: <span class="hl" id="conflictCount">0</span></span>
+    <span>Converged: <span class="hl" id="converged">-</span></span>
+  </div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+
+const USERS = [
+  { name: 'Alice', color: '#a855f7' },
+  { name: 'Bob', color: '#3b82f6' },
+  { name: 'Carol', color: '#22c55e' }
+];
+
+let crdtType = 'text';
+let delay = 1000, packetLoss = 0;
+let opCount = 0, syncCount = 0, conflictCount = 0;
+let userStates = []; /* per-user CRDT state */
+let pendingOps = []; /* operations in-flight */
+
+/* Simple vector clock */
+function newClock() { return [0, 0, 0]; }
+function tickClock(clock, userId) { const c = [...clock]; c[userId]++; return c; }
+
+/* ---- Text CRDT (simplified RGA) ---- */
+class TextCRDT {
+  constructor(userId) {
+    this.userId = userId;
+    this.chars = []; /* { id: [lamport, userId], char, deleted } */
+    this.lamport = 0;
+  }
+
+  insert(pos, char) {
+    this.lamport++;
+    const id = [this.lamport, this.userId];
+    this.chars.splice(pos, 0, { id, char, deleted: false });
+    return { type: 'insert', id, char, afterId: pos > 0 ? this.chars[pos - 1].id : null };
+  }
+
+  delete(pos) {
+    const visible = this.visibleChars();
+    if (pos >= visible.length) return null;
+    const target = visible[pos];
+    target.deleted = true;
+    return { type: 'delete', id: target.id };
+  }
+
+  apply(op) {
+    this.lamport = Math.max(this.lamport, op.id[0]) + 1;
+    if (op.type === 'insert') {
+      /* Find position after afterId */
+      let pos = 0;
+      if (op.afterId) {
+        pos = this.chars.findIndex(c => c.id[0] === op.afterId[0] && c.id[1] === op.afterId[1]) + 1;
+      }
+      /* Insert in correct position (by lamport then userId for tie-breaking) */
+      while (pos < this.chars.length) {
+        const existing = this.chars[pos];
+        if (existing.id[0] < op.id[0] || (existing.id[0] === op.id[0] && existing.id[1] < op.id[1])) break;
+        pos++;
+      }
+      this.chars.splice(pos, 0, { id: op.id, char: op.char, deleted: false });
+      return true;
+    } else if (op.type === 'delete') {
+      const idx = this.chars.findIndex(c => c.id[0] === op.id[0] && c.id[1] === op.id[1]);
+      if (idx >= 0 && !this.chars[idx].deleted) {
+        this.chars[idx].deleted = true;
+        return true;
+      }
+    }
+    return false;
+  }
+
+  visibleChars() { return this.chars.filter(c => !c.deleted); }
+  getText() { return this.visibleChars().map(c => c.char).join(''); }
+}
+
+/* ---- Counter CRDTs ---- */
+class GCounter {
+  constructor(userId) { this.userId = userId; this.counts = [0, 0, 0]; }
+  increment() { this.counts[this.userId]++; return { type: 'gcounter', counts: [...this.counts] }; }
+  apply(op) { for (let i = 0; i < 3; i++) this.counts[i] = Math.max(this.counts[i], op.counts[i]); }
+  value() { return this.counts.reduce((a, b) => a + b, 0); }
+}
+
+class PNCounter {
+  constructor(userId) { this.userId = userId; this.p = [0, 0, 0]; this.n = [0, 0, 0]; }
+  increment() { this.p[this.userId]++; return { type: 'pncounter', p: [...this.p], n: [...this.n] }; }
+  decrement() { this.n[this.userId]++; return { type: 'pncounter', p: [...this.p], n: [...this.n] }; }
+  apply(op) {
+    for (let i = 0; i < 3; i++) { this.p[i] = Math.max(this.p[i], op.p[i]); this.n[i] = Math.max(this.n[i], op.n[i]); }
+  }
+  value() { return this.p.reduce((a, b) => a + b, 0) - this.n.reduce((a, b) => a + b, 0); }
+}
+
+/* ---- LWW Register ---- */
+class LWWRegister {
+  constructor(userId) { this.userId = userId; this.val = ''; this.ts = 0; }
+  set(val) { this.ts = Date.now(); this.val = val; return { type: 'lww', val, ts: this.ts, uid: this.userId }; }
+  apply(op) {
+    if (op.ts > this.ts || (op.ts === this.ts && op.uid > this.userId)) {
+      this.val = op.val; this.ts = op.ts; return true;
+    }
+    return false;
+  }
+  value() { return this.val; }
+}
+
+/* ---- OR-Set ---- */
+class ORSet {
+  constructor(userId) { this.userId = userId; this.elements = new Map(); /* value -> Set of tags */ this.counter = 0; }
+  add(val) {
+    this.counter++;
+    const tag = `${this.userId}:${this.counter}`;
+    if (!this.elements.has(val)) this.elements.set(val, new Set());
+    this.elements.get(val).add(tag);
+    return { type: 'orset-add', val, tag };
+  }
+  remove(val) {
+    const tags = this.elements.get(val);
+    if (tags) {
+      const removed = [...tags];
+      this.elements.delete(val);
+      return { type: 'orset-remove', val, tags: removed };
+    }
+    return null;
+  }
+  apply(op) {
+    if (op.type === 'orset-add') {
+      if (!this.elements.has(op.val)) this.elements.set(op.val, new Set());
+      this.elements.get(op.val).add(op.tag);
+    } else if (op.type === 'orset-remove') {
+      const tags = this.elements.get(op.val);
+      if (tags) {
+        op.tags.forEach(t => tags.delete(t));
+        if (tags.size === 0) this.elements.delete(op.val);
+      }
+    }
+  }
+  values() { return [...this.elements.keys()]; }
+}
+
+function createState(userId) {
+  switch (crdtType) {
+    case 'text': return new TextCRDT(userId);
+    case 'gcounter': return new GCounter(userId);
+    case 'pncounter': return new PNCounter(userId);
+    case 'lww': return new LWWRegister(userId);
+    case 'orset': return new ORSet(userId);
+  }
+}
+
+function broadcast(fromUser, op) {
+  opCount++;
+  USERS.forEach((u, i) => {
+    if (i === fromUser) return;
+    if (Math.random() * 100 < packetLoss) return; /* dropped */
+    const d = delay + Math.random() * delay * 0.3;
+    pendingOps.push({ targetUser: i, op: JSON.parse(JSON.stringify(op)), deliverAt: Date.now() + d, fromUser });
+  });
+  updateBottom();
+}
+
+function processPending() {
+  const now = Date.now();
+  const ready = pendingOps.filter(p => p.deliverAt <= now);
+  pendingOps = pendingOps.filter(p => p.deliverAt > now);
+
+  ready.forEach(p => {
+    const state = userStates[p.targetUser];
+    if (crdtType === 'text') {
+      const wasConflict = state.apply(p.op);
+      if (wasConflict) conflictCount++;
+    } else {
+      state.apply(p.op);
+    }
+    syncCount++;
+  });
+
+  if (ready.length > 0) renderEditors();
+  updateBottom();
+}
+
+setInterval(processPending, 50);
+
+function updateBottom() {
+  $('opCount').textContent = opCount;
+  $('syncCount').textContent = syncCount;
+  $('conflictCount').textContent = conflictCount;
+
+  /* Check convergence */
+  if (crdtType === 'text') {
+    const texts = userStates.map(s => s.getText());
+    $('converged').textContent = (texts[0] === texts[1] && texts[1] === texts[2] && pendingOps.length === 0) ? 'Yes' : 'No';
+  } else {
+    $('converged').textContent = pendingOps.length === 0 ? 'Yes' : 'Syncing...';
+  }
+}
+
+function renderEditors() {
+  const container = $('editors');
+
+  if (crdtType === 'text') {
+    userStates.forEach((state, i) => {
+      const ta = document.getElementById(`ta-${i}`);
+      if (ta && ta !== document.activeElement) {
+        ta.value = state.getText();
+      }
+      const statusEl = document.getElementById(`status-${i}`);
+      if (statusEl) {
+        const hasPending = pendingOps.some(p => p.targetUser === i);
+        statusEl.textContent = hasPending ? 'syncing...' : 'synced';
+        statusEl.className = 'status ' + (hasPending ? 'pending' : 'synced');
+      }
+    });
+    return;
+  }
+
+  /* Re-render non-text types */
+  USERS.forEach((user, i) => {
+    const state = userStates[i];
+    const content = document.getElementById(`content-${i}`);
+    if (!content) return;
+
+    const statusEl = document.getElementById(`status-${i}`);
+    const hasPending = pendingOps.some(p => p.targetUser === i);
+    if (statusEl) {
+      statusEl.textContent = hasPending ? 'syncing...' : 'synced';
+      statusEl.className = 'status ' + (hasPending ? 'pending' : 'synced');
+    }
+
+    if (crdtType === 'gcounter' || crdtType === 'pncounter') {
+      const valEl = content.querySelector('.counter-value');
+      if (valEl) valEl.textContent = state.value();
+    } else if (crdtType === 'lww') {
+      const valEl = content.querySelector('.counter-value');
+      if (valEl) valEl.textContent = state.value() || '(empty)';
+    } else if (crdtType === 'orset') {
+      const itemsEl = content.querySelector('.set-items');
+      if (itemsEl) {
+        itemsEl.innerHTML = state.values().map(v =>
+          `<span class="set-item" onclick="removeFromSet(${i},'${v}')">${v} x</span>`
+        ).join('');
+      }
+    }
+  });
+}
+
+function buildUI() {
+  const container = $('editors');
+  container.innerHTML = '';
+  userStates = USERS.map((_, i) => createState(i));
+  opCount = 0; syncCount = 0; conflictCount = 0; pendingOps = [];
+
+  USERS.forEach((user, i) => {
+    const panel = document.createElement('div');
+    panel.className = 'editor-panel';
+
+    const header = `<div class="editor-header">
+      <span><span class="user-dot" style="background:${user.color}"></span><span class="user-name">${user.name}</span></span>
+      <span class="status synced" id="status-${i}">synced</span>
+    </div>`;
+
+    if (crdtType === 'text') {
+      panel.innerHTML = header + `<div class="editor-area"><textarea id="ta-${i}" placeholder="${user.name} types here..."></textarea></div>`;
+      container.appendChild(panel);
+
+      /* Attach event listener after DOM insertion */
+      setTimeout(() => {
+        const ta = document.getElementById(`ta-${i}`);
+        let prevText = '';
+        ta.addEventListener('input', () => {
+          const newText = ta.value;
+          const state = userStates[i];
+          /* Simple diff: find what changed */
+          if (newText.length > prevText.length) {
+            /* Insertion */
+            for (let p = 0; p < newText.length; p++) {
+              if (p >= prevText.length || newText[p] !== prevText[p]) {
+                const op = state.insert(p, newText[p]);
+                broadcast(i, op);
+                break;
+              }
+            }
+          } else if (newText.length < prevText.length) {
+            /* Deletion */
+            for (let p = 0; p < prevText.length; p++) {
+              if (p >= newText.length || newText[p] !== prevText[p]) {
+                const op = state.delete(p);
+                if (op) broadcast(i, op);
+                break;
+              }
+            }
+          }
+          prevText = newText;
+        });
+      }, 0);
+    } else if (crdtType === 'gcounter') {
+      panel.innerHTML = header + `<div class="editor-area" style="display:flex;align-items:center;justify-content:center" id="content-${i}">
+        <div class="counter-panel">
+          <div class="counter-value">0</div>
+          <div class="counter-btns"><button onclick="incrCounter(${i})">+ 1</button></div>
+        </div>
+      </div>`;
+      container.appendChild(panel);
+    } else if (crdtType === 'pncounter') {
+      panel.innerHTML = header + `<div class="editor-area" style="display:flex;align-items:center;justify-content:center" id="content-${i}">
+        <div class="counter-panel">
+          <div class="counter-value">0</div>
+          <div class="counter-btns"><button onclick="decrCounter(${i})">- 1</button><button onclick="incrCounter(${i})">+ 1</button></div>
+        </div>
+      </div>`;
+      container.appendChild(panel);
+    } else if (crdtType === 'lww') {
+      panel.innerHTML = header + `<div class="editor-area" style="display:flex;align-items:center;justify-content:center" id="content-${i}">
+        <div class="counter-panel">
+          <div class="counter-value" style="font-size:1.5rem">(empty)</div>
+          <div class="set-input" style="margin-top:1rem">
+            <input id="lww-in-${i}" placeholder="Set value...">
+            <button class="btn" onclick="setLWW(${i})">Set</button>
+          </div>
+        </div>
+      </div>`;
+      container.appendChild(panel);
+    } else if (crdtType === 'orset') {
+      panel.innerHTML = header + `<div class="editor-area" style="padding:1rem" id="content-${i}">
+        <div style="font-size:0.85rem;color:#71717a;margin-bottom:0.5rem">OR-Set (click item to remove)</div>
+        <div class="set-items"></div>
+        <div class="set-input">
+          <input id="orset-in-${i}" placeholder="Add item...">
+          <button class="btn" onclick="addToSet(${i})">Add</button>
+        </div>
+      </div>`;
+      container.appendChild(panel);
+    }
+  });
+}
+
+/* Global action handlers */
+window.incrCounter = function(i) {
+  const op = userStates[i].increment();
+  broadcast(i, op);
+  renderEditors();
+};
+window.decrCounter = function(i) {
+  const op = userStates[i].decrement();
+  broadcast(i, op);
+  renderEditors();
+};
+window.setLWW = function(i) {
+  const input = document.getElementById(`lww-in-${i}`);
+  const val = input.value.trim();
+  if (!val) return;
+  const op = userStates[i].set(val);
+  broadcast(i, op);
+  input.value = '';
+  renderEditors();
+};
+window.addToSet = function(i) {
+  const input = document.getElementById(`orset-in-${i}`);
+  const val = input.value.trim();
+  if (!val) return;
+  const op = userStates[i].add(val);
+  broadcast(i, op);
+  input.value = '';
+  renderEditors();
+};
+window.removeFromSet = function(i, val) {
+  const op = userStates[i].remove(val);
+  if (op) broadcast(i, op);
+  renderEditors();
+};
+
+/* Controls */
+$('delay').addEventListener('input', () => { delay = +$('delay').value; $('delayVal').textContent = (delay / 1000).toFixed(1) + 's'; });
+$('packetLoss').addEventListener('input', () => { packetLoss = +$('packetLoss').value; $('plVal').textContent = packetLoss + '%'; });
+$('crdtType').addEventListener('change', () => { crdtType = $('crdtType').value; buildUI(); });
+$('resetBtn').addEventListener('click', buildUI);
+
+buildUI();
+</script>
+<script src="/related.js"></script>
+</body>
+</html>

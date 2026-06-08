@@ -1,0 +1,369 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>P2P File Sharing — FreePeerStore</title>
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: #0a0a0a; color: #e4e4e7; font-family: 'Manrope', sans-serif; min-height: 100vh; display: flex; flex-direction: column; }
+    a { color: #a855f7; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+
+    .header { padding: 1rem 2rem; border-bottom: 1px solid #27272a; display: flex; align-items: center; gap: 1rem; }
+    .header .back { color: #71717a; font-size: 0.85rem; }
+    .header h1 { font-size: 1.1rem; font-weight: 700; }
+    .header h1 span { color: #a855f7; }
+
+    .page { flex: 1; display: flex; align-items: center; justify-content: center; padding: 2rem; }
+    .card {
+      background: #18181b; border: 1px solid #27272a; border-radius: 16px;
+      padding: 2.5rem; max-width: 600px; width: 100%;
+    }
+    .card h2 { font-size: 1.3rem; font-weight: 700; margin-bottom: 0.25rem; }
+    .card .sub { color: #71717a; font-size: 0.85rem; margin-bottom: 1.5rem; }
+
+    .tabs { display: flex; gap: 4px; margin-bottom: 1.5rem; }
+    .tab {
+      flex: 1; padding: 10px; text-align: center; border-radius: 8px;
+      font-weight: 600; font-size: 0.85rem; cursor: pointer;
+      background: #0a0a0a; border: 1px solid #27272a; color: #a1a1aa;
+      transition: all 0.2s;
+    }
+    .tab.active { background: rgba(168,85,247,0.1); border-color: #a855f7; color: #a855f7; }
+
+    .section { display: none; }
+    .section.active { display: block; }
+
+    .drop-zone {
+      border: 2px dashed #27272a; border-radius: 12px; padding: 3rem 2rem;
+      text-align: center; cursor: pointer; transition: all 0.2s; margin-bottom: 1rem;
+    }
+    .drop-zone:hover, .drop-zone.drag-over { border-color: #a855f7; }
+    .drop-zone .icon { font-size: 2.5rem; margin-bottom: 0.5rem; }
+    .drop-zone p { color: #71717a; font-size: 0.85rem; }
+    .drop-zone input { display: none; }
+
+    .file-info {
+      background: #0a0a0a; border: 1px solid #27272a; border-radius: 8px;
+      padding: 1rem; display: flex; align-items: center; gap: 1rem; margin-bottom: 1rem;
+    }
+    .file-icon { font-size: 1.5rem; }
+    .file-meta { flex: 1; }
+    .file-meta .name { font-weight: 600; font-size: 0.9rem; word-break: break-all; }
+    .file-meta .size { color: #71717a; font-size: 0.8rem; font-family: 'JetBrains Mono', monospace; }
+
+    textarea.signal {
+      width: 100%; height: 80px; background: #0a0a0a; border: 1px solid #27272a;
+      color: #e4e4e7; padding: 8px; border-radius: 6px; font-family: 'JetBrains Mono', monospace;
+      font-size: 0.65rem; resize: vertical; margin-bottom: 0.5rem;
+    }
+    textarea.signal:focus { outline: none; border-color: #a855f7; }
+
+    .btn {
+      background: #a855f7; color: #fff; border: none; padding: 10px 20px;
+      border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 0.85rem;
+      width: 100%; transition: background 0.2s; margin-bottom: 0.5rem;
+    }
+    .btn:hover { background: #9333ea; }
+    .btn.secondary { background: #27272a; color: #e4e4e7; }
+    .btn.secondary:hover { background: #3f3f46; }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    .progress-bar {
+      width: 100%; height: 8px; background: #27272a; border-radius: 4px;
+      overflow: hidden; margin: 0.75rem 0;
+    }
+    .progress-bar .fill {
+      height: 100%; background: #a855f7; border-radius: 4px;
+      transition: width 0.2s;
+    }
+
+    .transfer-stats {
+      display: flex; gap: 1.5rem; font-size: 0.8rem; font-family: 'JetBrains Mono', monospace; color: #71717a;
+    }
+    .transfer-stats .hl { color: #a855f7; }
+
+    .step-label {
+      font-size: 0.75rem; color: #71717a; text-transform: uppercase;
+      letter-spacing: 0.05em; margin-bottom: 6px;
+    }
+
+    .complete-msg {
+      text-align: center; padding: 2rem;
+    }
+    .complete-msg .check { font-size: 3rem; margin-bottom: 0.5rem; }
+    .complete-msg h3 { color: #22c55e; font-size: 1.1rem; }
+    .complete-msg p { color: #71717a; font-size: 0.85rem; margin-top: 0.5rem; }
+  </style>
+</head>
+<body>
+
+<div class="header">
+  <a href="/" class="back">FreePeerStore</a>
+  <h1><span>P2P</span> File Sharing</h1>
+</div>
+
+<div class="page">
+  <div class="card">
+    <h2>Send files directly</h2>
+    <p class="sub">Browser-to-browser via WebRTC. No server ever touches your file.</p>
+
+    <div class="tabs">
+      <div class="tab active" data-tab="send">Send File</div>
+      <div class="tab" data-tab="receive">Receive File</div>
+    </div>
+
+    <!-- SEND SECTION -->
+    <div class="section active" id="sendSection">
+      <div class="drop-zone" id="dropZone">
+        <div class="icon">&#x1F4C1;</div>
+        <p>Drop a file here or click to select</p>
+        <input type="file" id="fileInput">
+      </div>
+
+      <div id="sendFileInfo" style="display:none"></div>
+
+      <div id="sendSignaling" style="display:none">
+        <div class="step-label">Step 1: Send this offer to receiver</div>
+        <textarea class="signal" id="sendOffer" readonly></textarea>
+        <button class="btn secondary" id="copySendOffer">Copy Offer</button>
+
+        <div class="step-label" style="margin-top:1rem">Step 2: Paste receiver's answer</div>
+        <textarea class="signal" id="sendAnswer" placeholder="Paste answer here..."></textarea>
+        <button class="btn" id="acceptSendAnswer">Connect & Send</button>
+      </div>
+
+      <div id="sendProgress" style="display:none">
+        <div class="progress-bar"><div class="fill" id="sendFill"></div></div>
+        <div class="transfer-stats">
+          <span>Progress: <span class="hl" id="sendPct">0%</span></span>
+          <span>Speed: <span class="hl" id="sendSpeed">-</span></span>
+          <span>ETA: <span class="hl" id="sendEta">-</span></span>
+        </div>
+      </div>
+
+      <div id="sendComplete" style="display:none">
+        <div class="complete-msg">
+          <div class="check" style="color:#22c55e">&#x2714;</div>
+          <h3>File Sent!</h3>
+          <p>Transfer complete. The receiver has your file.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- RECEIVE SECTION -->
+    <div class="section" id="receiveSection">
+      <div class="step-label">Step 1: Paste sender's offer</div>
+      <textarea class="signal" id="recvOffer" placeholder="Paste the offer from sender..."></textarea>
+      <button class="btn" id="genRecvAnswer">Generate Answer</button>
+
+      <div id="recvSignaling" style="display:none">
+        <div class="step-label" style="margin-top:1rem">Step 2: Send this answer back to sender</div>
+        <textarea class="signal" id="recvAnswer" readonly></textarea>
+        <button class="btn secondary" id="copyRecvAnswer">Copy Answer</button>
+      </div>
+
+      <div id="recvProgress" style="display:none">
+        <div id="recvFileInfo"></div>
+        <div class="progress-bar"><div class="fill" id="recvFill"></div></div>
+        <div class="transfer-stats">
+          <span>Progress: <span class="hl" id="recvPct">0%</span></span>
+          <span>Speed: <span class="hl" id="recvSpeed">-</span></span>
+          <span>Received: <span class="hl" id="recvSize">0 B</span></span>
+        </div>
+      </div>
+
+      <div id="recvComplete" style="display:none">
+        <div class="complete-msg">
+          <div class="check" style="color:#22c55e">&#x2714;</div>
+          <h3>File Received!</h3>
+          <p id="recvCompleteInfo"></p>
+          <button class="btn" id="downloadBtn" style="margin-top:1rem">Download File</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const ICE_SERVERS = [{ urls: 'stun:stun.l.google.com:19302' }];
+const CHUNK_SIZE = 64 * 1024;
+
+let sendPC = null, sendDC = null, selectedFile = null;
+let recvPC = null, recvDC = null;
+
+function formatBytes(b) {
+  if (b < 1024) return b + ' B';
+  if (b < 1024 * 1024) return (b / 1024).toFixed(1) + ' KB';
+  if (b < 1024 * 1024 * 1024) return (b / (1024 * 1024)).toFixed(1) + ' MB';
+  return (b / (1024 * 1024 * 1024)).toFixed(2) + ' GB';
+}
+
+/* Tabs */
+document.querySelectorAll('.tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    document.querySelector('.tab.active').classList.remove('active');
+    tab.classList.add('active');
+    document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+    $(tab.dataset.tab + 'Section').classList.add('active');
+  });
+});
+
+/* File drop */
+$('dropZone').addEventListener('click', () => $('fileInput').click());
+$('dropZone').addEventListener('dragover', (e) => { e.preventDefault(); $('dropZone').classList.add('drag-over'); });
+$('dropZone').addEventListener('dragleave', () => $('dropZone').classList.remove('drag-over'));
+$('dropZone').addEventListener('drop', (e) => { e.preventDefault(); $('dropZone').classList.remove('drag-over'); pickFile(e.dataTransfer.files[0]); });
+$('fileInput').addEventListener('change', (e) => { if (e.target.files[0]) pickFile(e.target.files[0]); });
+
+async function pickFile(file) {
+  selectedFile = file;
+  $('dropZone').style.display = 'none';
+  $('sendFileInfo').style.display = 'block';
+  $('sendFileInfo').innerHTML = `<div class="file-info"><div class="file-icon">&#x1F4C4;</div><div class="file-meta"><div class="name">${file.name}</div><div class="size">${formatBytes(file.size)}</div></div></div>`;
+
+  /* Create offer */
+  sendPC = new RTCPeerConnection({ iceServers: ICE_SERVERS });
+  sendDC = sendPC.createDataChannel('file', { ordered: true });
+  sendDC.binaryType = 'arraybuffer';
+
+  sendDC.onopen = () => startSending();
+
+  const offer = await sendPC.createOffer();
+  await sendPC.setLocalDescription(offer);
+  await new Promise(resolve => {
+    if (sendPC.iceGatheringState === 'complete') return resolve();
+    sendPC.onicegatheringstatechange = () => { if (sendPC.iceGatheringState === 'complete') resolve(); };
+  });
+
+  $('sendOffer').value = btoa(JSON.stringify(sendPC.localDescription));
+  $('sendSignaling').style.display = 'block';
+}
+
+$('copySendOffer').addEventListener('click', () => {
+  navigator.clipboard.writeText($('sendOffer').value);
+  $('copySendOffer').textContent = 'Copied!';
+  setTimeout(() => $('copySendOffer').textContent = 'Copy Offer', 1500);
+});
+
+$('acceptSendAnswer').addEventListener('click', async () => {
+  try {
+    const answer = JSON.parse(atob($('sendAnswer').value.trim()));
+    await sendPC.setRemoteDescription(answer);
+  } catch (e) { alert('Invalid answer.'); }
+});
+
+async function startSending() {
+  $('sendSignaling').style.display = 'none';
+  $('sendProgress').style.display = 'block';
+
+  /* Send metadata */
+  sendDC.send(JSON.stringify({ type: 'meta', name: selectedFile.name, size: selectedFile.size }));
+
+  const reader = selectedFile.stream().getReader();
+  let sent = 0;
+  const startTime = Date.now();
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+
+    for (let i = 0; i < value.byteLength; i += CHUNK_SIZE) {
+      const chunk = value.slice(i, Math.min(i + CHUNK_SIZE, value.byteLength));
+      sendDC.send(chunk);
+      sent += chunk.byteLength;
+
+      const pct = (sent / selectedFile.size * 100).toFixed(1);
+      $('sendFill').style.width = pct + '%';
+      $('sendPct').textContent = pct + '%';
+
+      const elapsed = (Date.now() - startTime) / 1000;
+      const speed = sent / elapsed;
+      $('sendSpeed').textContent = formatBytes(speed) + '/s';
+      const remaining = (selectedFile.size - sent) / speed;
+      $('sendEta').textContent = remaining < 1 ? '<1s' : Math.ceil(remaining) + 's';
+
+      /* Backpressure */
+      while (sendDC.bufferedAmount > 2 * 1024 * 1024) {
+        await new Promise(r => setTimeout(r, 10));
+      }
+    }
+  }
+
+  sendDC.send(JSON.stringify({ type: 'done' }));
+  $('sendProgress').style.display = 'none';
+  $('sendComplete').style.display = 'block';
+}
+
+/* RECEIVE */
+$('genRecvAnswer').addEventListener('click', async () => {
+  try {
+    recvPC = new RTCPeerConnection({ iceServers: ICE_SERVERS });
+
+    let fileMeta = null, chunks = [], received = 0, startTime = 0;
+
+    recvPC.ondatachannel = (e) => {
+      recvDC = e.channel;
+      recvDC.binaryType = 'arraybuffer';
+
+      recvDC.onmessage = (evt) => {
+        if (typeof evt.data === 'string') {
+          const msg = JSON.parse(evt.data);
+          if (msg.type === 'meta') {
+            fileMeta = msg;
+            startTime = Date.now();
+            $('recvSignaling').style.display = 'none';
+            $('recvProgress').style.display = 'block';
+            $('recvFileInfo').innerHTML = `<div class="file-info"><div class="file-icon">&#x1F4C4;</div><div class="file-meta"><div class="name">${msg.name}</div><div class="size">${formatBytes(msg.size)}</div></div></div>`;
+          } else if (msg.type === 'done') {
+            const blob = new Blob(chunks);
+            const url = URL.createObjectURL(blob);
+            $('recvProgress').style.display = 'none';
+            $('recvComplete').style.display = 'block';
+            $('recvCompleteInfo').textContent = `${fileMeta.name} (${formatBytes(fileMeta.size)})`;
+            $('downloadBtn').onclick = () => {
+              const a = document.createElement('a');
+              a.href = url; a.download = fileMeta.name; a.click();
+            };
+          }
+        } else {
+          chunks.push(evt.data);
+          received += evt.data.byteLength;
+          const pct = (received / fileMeta.size * 100).toFixed(1);
+          $('recvFill').style.width = pct + '%';
+          $('recvPct').textContent = pct + '%';
+          $('recvSize').textContent = formatBytes(received);
+          const elapsed = (Date.now() - startTime) / 1000;
+          $('recvSpeed').textContent = formatBytes(received / elapsed) + '/s';
+        }
+      };
+    };
+
+    const offer = JSON.parse(atob($('recvOffer').value.trim()));
+    await recvPC.setRemoteDescription(offer);
+    const answer = await recvPC.createAnswer();
+    await recvPC.setLocalDescription(answer);
+
+    await new Promise(resolve => {
+      if (recvPC.iceGatheringState === 'complete') return resolve();
+      recvPC.onicegatheringstatechange = () => { if (recvPC.iceGatheringState === 'complete') resolve(); };
+    });
+
+    $('recvAnswer').value = btoa(JSON.stringify(recvPC.localDescription));
+    $('recvSignaling').style.display = 'block';
+  } catch (e) { alert('Invalid offer.'); }
+});
+
+$('copyRecvAnswer').addEventListener('click', () => {
+  navigator.clipboard.writeText($('recvAnswer').value);
+  $('copyRecvAnswer').textContent = 'Copied!';
+  setTimeout(() => $('copyRecvAnswer').textContent = 'Copy Answer', 1500);
+});
+</script>
+<script src="/related.js"></script>
+</body>
+</html>

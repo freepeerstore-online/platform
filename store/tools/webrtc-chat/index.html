@@ -1,0 +1,407 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>WebRTC P2P Chat — FreePeerStore</title>
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: #0a0a0a; color: #e4e4e7; font-family: 'Manrope', sans-serif; min-height: 100vh; display: flex; flex-direction: column; }
+    a { color: #a855f7; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+
+    .header { padding: 1rem 2rem; border-bottom: 1px solid #27272a; display: flex; align-items: center; gap: 1rem; }
+    .header .back { color: #71717a; font-size: 0.85rem; }
+    .header h1 { font-size: 1.1rem; font-weight: 700; }
+    .header h1 span { color: #a855f7; }
+    .header .status-dot { width: 8px; height: 8px; border-radius: 50%; margin-left: auto; }
+    .header .status-label { font-size: 0.75rem; font-family: 'JetBrains Mono', monospace; color: #71717a; }
+
+    .layout { display: flex; flex: 1; overflow: hidden; }
+    .sidebar { width: 340px; min-width: 340px; border-right: 1px solid #27272a; padding: 1.25rem; overflow-y: auto; display: flex; flex-direction: column; gap: 0.75rem; }
+    .chat-area { flex: 1; display: flex; flex-direction: column; }
+
+    .section-title { font-size: 0.75rem; color: #71717a; text-transform: uppercase; letter-spacing: 0.05em; }
+
+    .btn {
+      background: #a855f7; color: #fff; border: none; padding: 10px 16px;
+      border-radius: 8px; cursor: pointer; font-family: 'Manrope', sans-serif;
+      font-weight: 600; font-size: 0.85rem; transition: background 0.2s; width: 100%;
+    }
+    .btn:hover { background: #9333ea; }
+    .btn.secondary { background: #27272a; color: #e4e4e7; }
+    .btn.secondary:hover { background: #3f3f46; }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .btn-row { display: flex; gap: 6px; }
+    .btn-row .btn { flex: 1; }
+
+    textarea.signal {
+      width: 100%; height: 80px; background: #18181b; border: 1px solid #27272a;
+      color: #e4e4e7; padding: 8px; border-radius: 6px; font-family: 'JetBrains Mono', monospace;
+      font-size: 0.7rem; resize: vertical;
+    }
+    textarea.signal:focus { outline: none; border-color: #a855f7; }
+
+    .messages { flex: 1; overflow-y: auto; padding: 1rem 1.5rem; display: flex; flex-direction: column; gap: 8px; }
+    .msg {
+      max-width: 70%; padding: 10px 14px; border-radius: 12px; font-size: 0.85rem; line-height: 1.5;
+      word-break: break-word;
+    }
+    .msg.mine { align-self: flex-end; background: #a855f7; color: #fff; border-bottom-right-radius: 4px; }
+    .msg.theirs { align-self: flex-start; background: #18181b; border: 1px solid #27272a; border-bottom-left-radius: 4px; }
+    .msg .time { font-size: 0.65rem; color: rgba(255,255,255,0.5); margin-top: 4px; }
+    .msg.theirs .time { color: #71717a; }
+    .msg.system { align-self: center; background: none; color: #71717a; font-size: 0.75rem; font-style: italic; padding: 4px; }
+    .msg.file-msg { background: #18181b; border: 1px solid #27272a; }
+    .msg.file-msg a { color: #a855f7; }
+
+    .compose {
+      padding: 1rem 1.5rem; border-top: 1px solid #27272a; display: flex; gap: 8px;
+    }
+    .compose input {
+      flex: 1; background: #18181b; border: 1px solid #27272a; color: #e4e4e7;
+      padding: 10px 14px; border-radius: 8px; font-family: 'Manrope', sans-serif; font-size: 0.9rem;
+    }
+    .compose input:focus { outline: none; border-color: #a855f7; }
+    .compose button { padding: 10px 20px; }
+
+    .file-drop {
+      border: 2px dashed #27272a; border-radius: 8px; padding: 12px;
+      text-align: center; font-size: 0.8rem; color: #71717a; cursor: pointer;
+      transition: all 0.2s;
+    }
+    .file-drop:hover, .file-drop.drag-over { border-color: #a855f7; color: #a855f7; }
+    .file-drop input { display: none; }
+
+    .stats-panel {
+      background: #18181b; border: 1px solid #27272a; border-radius: 8px;
+      padding: 0.75rem; font-family: 'JetBrains Mono', monospace; font-size: 0.7rem;
+    }
+    .stats-panel .row { display: flex; justify-content: space-between; padding: 2px 0; }
+    .stats-panel .lbl { color: #71717a; }
+    .stats-panel .hl { color: #a855f7; }
+
+    .step-badge {
+      display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 0.7rem;
+      font-weight: 600; margin-bottom: 4px;
+    }
+    .step-badge.offer { background: rgba(168,85,247,0.15); color: #a855f7; }
+    .step-badge.answer { background: rgba(59,130,246,0.15); color: #3b82f6; }
+
+    @media (max-width: 768px) {
+      .layout { flex-direction: column; }
+      .sidebar { width: 100%; min-width: 0; max-height: 40vh; border-right: none; border-bottom: 1px solid #27272a; }
+    }
+  </style>
+</head>
+<body>
+
+<div class="header">
+  <a href="/" class="back">FreePeerStore</a>
+  <h1><span>WebRTC</span> P2P Chat</h1>
+  <span class="status-label" id="statusLabel">Disconnected</span>
+  <div class="status-dot" id="statusDot" style="background:#ef4444"></div>
+</div>
+
+<div class="layout">
+  <div class="sidebar">
+    <div class="section-title">1. Create or Join</div>
+    <div class="btn-row">
+      <button class="btn" id="createBtn">Create Room</button>
+      <button class="btn secondary" id="joinBtn">Join Room</button>
+    </div>
+
+    <div id="offerSection" style="display:none">
+      <span class="step-badge offer">Your Offer</span>
+      <textarea class="signal" id="offerText" readonly placeholder="Generating offer..."></textarea>
+      <button class="btn secondary" id="copyOffer" style="margin-top:4px">Copy Offer</button>
+    </div>
+
+    <div id="answerInputSection" style="display:none">
+      <span class="step-badge answer">Paste Answer</span>
+      <textarea class="signal" id="answerInput" placeholder="Paste the other peer's answer here..."></textarea>
+      <button class="btn" id="acceptAnswer" style="margin-top:4px">Accept Answer</button>
+    </div>
+
+    <div id="joinSection" style="display:none">
+      <span class="step-badge offer">Paste Offer</span>
+      <textarea class="signal" id="offerInput" placeholder="Paste the offer from the other peer..."></textarea>
+      <button class="btn" id="genAnswer" style="margin-top:4px">Generate Answer</button>
+    </div>
+
+    <div id="answerSection" style="display:none">
+      <span class="step-badge answer">Your Answer</span>
+      <textarea class="signal" id="answerText" readonly></textarea>
+      <button class="btn secondary" id="copyAnswer" style="margin-top:4px">Copy Answer</button>
+    </div>
+
+    <div class="section-title" style="margin-top:0.5rem">File Transfer</div>
+    <div class="file-drop" id="fileDrop">
+      Drop file here or click to select
+      <input type="file" id="fileInput">
+    </div>
+
+    <div class="section-title" style="margin-top:0.5rem">Connection Stats</div>
+    <div class="stats-panel">
+      <div class="row"><span class="lbl">ICE state</span><span id="sIce">-</span></div>
+      <div class="row"><span class="lbl">DTLS state</span><span id="sDtls">-</span></div>
+      <div class="row"><span class="lbl">Bytes sent</span><span class="hl" id="sSent">0</span></div>
+      <div class="row"><span class="lbl">Bytes received</span><span class="hl" id="sRecv">0</span></div>
+      <div class="row"><span class="lbl">Messages</span><span id="sMsgs">0</span></div>
+    </div>
+  </div>
+
+  <div class="chat-area">
+    <div class="messages" id="messages">
+      <div class="msg system">No peers connected. Create a room or join one to start chatting.</div>
+    </div>
+    <div class="compose">
+      <input type="text" id="msgInput" placeholder="Type a message..." disabled>
+      <button class="btn" id="sendBtn" disabled>Send</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+
+let pc = null, dc = null;
+let bytesSent = 0, bytesRecv = 0, msgCount = 0;
+let connected = false;
+
+const ICE_SERVERS = [{ urls: 'stun:stun.l.google.com:19302' }];
+
+function setStatus(text, color) {
+  $('statusLabel').textContent = text;
+  $('statusDot').style.background = color;
+}
+
+function addMsg(text, cls) {
+  const div = document.createElement('div');
+  div.className = 'msg ' + cls;
+  if (cls === 'mine' || cls === 'theirs') {
+    const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    div.innerHTML = text + `<div class="time">${time}</div>`;
+  } else {
+    div.textContent = text;
+  }
+  $('messages').appendChild(div);
+  $('messages').scrollTop = $('messages').scrollHeight;
+}
+
+function setupDC(channel) {
+  dc = channel;
+  dc.binaryType = 'arraybuffer';
+
+  dc.onopen = () => {
+    connected = true;
+    setStatus('Connected', '#22c55e');
+    addMsg('Peer connected! You can now chat.', 'system');
+    $('msgInput').disabled = false;
+    $('sendBtn').disabled = false;
+  };
+
+  dc.onclose = () => {
+    connected = false;
+    setStatus('Disconnected', '#ef4444');
+    addMsg('Peer disconnected.', 'system');
+    $('msgInput').disabled = true;
+    $('sendBtn').disabled = true;
+  };
+
+  let incomingFile = null;
+  let receivedChunks = [];
+  let receivedSize = 0;
+
+  dc.onmessage = (e) => {
+    if (typeof e.data === 'string') {
+      const msg = JSON.parse(e.data);
+      if (msg.type === 'chat') {
+        bytesRecv += e.data.length;
+        msgCount++;
+        addMsg(msg.text, 'theirs');
+      } else if (msg.type === 'file-start') {
+        incomingFile = msg;
+        receivedChunks = [];
+        receivedSize = 0;
+        addMsg(`Receiving file: ${msg.name} (${formatBytes(msg.size)})`, 'system');
+      } else if (msg.type === 'file-end') {
+        const blob = new Blob(receivedChunks);
+        const url = URL.createObjectURL(blob);
+        const div = document.createElement('div');
+        div.className = 'msg file-msg';
+        div.innerHTML = `File received: <a href="${url}" download="${incomingFile.name}">${incomingFile.name}</a> (${formatBytes(incomingFile.size)})`;
+        $('messages').appendChild(div);
+        $('messages').scrollTop = $('messages').scrollHeight;
+        incomingFile = null;
+      }
+    } else {
+      /* Binary chunk */
+      receivedChunks.push(e.data);
+      receivedSize += e.data.byteLength;
+      bytesRecv += e.data.byteLength;
+    }
+    updateStats();
+  };
+}
+
+function createPC() {
+  pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
+  pc.oniceconnectionstatechange = () => {
+    $('sIce').textContent = pc.iceConnectionState;
+    if (pc.iceConnectionState === 'connected') setStatus('Connected', '#22c55e');
+    if (pc.iceConnectionState === 'disconnected' || pc.iceConnectionState === 'failed') setStatus('Disconnected', '#ef4444');
+  };
+  pc.onconnectionstatechange = () => {
+    $('sDtls').textContent = pc.connectionState;
+  };
+}
+
+/* Create Room (Offerer) */
+$('createBtn').addEventListener('click', async () => {
+  createPC();
+  const channel = pc.createDataChannel('chat', { ordered: true });
+  setupDC(channel);
+
+  const offer = await pc.createOffer();
+  await pc.setLocalDescription(offer);
+
+  /* Wait for ICE gathering */
+  await new Promise(resolve => {
+    if (pc.iceGatheringState === 'complete') return resolve();
+    pc.onicegatheringstatechange = () => { if (pc.iceGatheringState === 'complete') resolve(); };
+  });
+
+  $('offerText').value = btoa(JSON.stringify(pc.localDescription));
+  $('offerSection').style.display = 'block';
+  $('answerInputSection').style.display = 'block';
+  $('createBtn').disabled = true;
+  $('joinBtn').disabled = true;
+  setStatus('Waiting for answer...', '#f59e0b');
+});
+
+$('copyOffer').addEventListener('click', () => {
+  navigator.clipboard.writeText($('offerText').value);
+  $('copyOffer').textContent = 'Copied!';
+  setTimeout(() => $('copyOffer').textContent = 'Copy Offer', 1500);
+});
+
+$('acceptAnswer').addEventListener('click', async () => {
+  try {
+    const answer = JSON.parse(atob($('answerInput').value.trim()));
+    await pc.setRemoteDescription(answer);
+    setStatus('Connecting...', '#f59e0b');
+  } catch (e) { alert('Invalid answer. Make sure you paste the full text.'); }
+});
+
+/* Join Room (Answerer) */
+$('joinBtn').addEventListener('click', () => {
+  $('joinSection').style.display = 'block';
+  $('createBtn').disabled = true;
+  $('joinBtn').disabled = true;
+  setStatus('Paste offer to join', '#f59e0b');
+});
+
+$('genAnswer').addEventListener('click', async () => {
+  try {
+    createPC();
+    pc.ondatachannel = (e) => setupDC(e.channel);
+
+    const offer = JSON.parse(atob($('offerInput').value.trim()));
+    await pc.setRemoteDescription(offer);
+    const answer = await pc.createAnswer();
+    await pc.setLocalDescription(answer);
+
+    await new Promise(resolve => {
+      if (pc.iceGatheringState === 'complete') return resolve();
+      pc.onicegatheringstatechange = () => { if (pc.iceGatheringState === 'complete') resolve(); };
+    });
+
+    $('answerText').value = btoa(JSON.stringify(pc.localDescription));
+    $('answerSection').style.display = 'block';
+    setStatus('Connecting...', '#f59e0b');
+  } catch (e) { alert('Invalid offer. Make sure you paste the full text.'); }
+});
+
+$('copyAnswer').addEventListener('click', () => {
+  navigator.clipboard.writeText($('answerText').value);
+  $('copyAnswer').textContent = 'Copied!';
+  setTimeout(() => $('copyAnswer').textContent = 'Copy Answer', 1500);
+});
+
+/* Send message */
+function sendMessage() {
+  const text = $('msgInput').value.trim();
+  if (!text || !dc || dc.readyState !== 'open') return;
+  const payload = JSON.stringify({ type: 'chat', text });
+  dc.send(payload);
+  bytesSent += payload.length;
+  msgCount++;
+  addMsg(text, 'mine');
+  $('msgInput').value = '';
+  updateStats();
+}
+
+$('sendBtn').addEventListener('click', sendMessage);
+$('msgInput').addEventListener('keydown', (e) => { if (e.key === 'Enter') sendMessage(); });
+
+/* File transfer */
+$('fileDrop').addEventListener('click', () => $('fileInput').click());
+$('fileDrop').addEventListener('dragover', (e) => { e.preventDefault(); $('fileDrop').classList.add('drag-over'); });
+$('fileDrop').addEventListener('dragleave', () => $('fileDrop').classList.remove('drag-over'));
+$('fileDrop').addEventListener('drop', (e) => {
+  e.preventDefault(); $('fileDrop').classList.remove('drag-over');
+  if (e.dataTransfer.files[0]) sendFile(e.dataTransfer.files[0]);
+});
+$('fileInput').addEventListener('change', (e) => { if (e.target.files[0]) sendFile(e.target.files[0]); });
+
+async function sendFile(file) {
+  if (!dc || dc.readyState !== 'open') { alert('Not connected to a peer.'); return; }
+
+  dc.send(JSON.stringify({ type: 'file-start', name: file.name, size: file.size }));
+  addMsg(`Sending file: ${file.name} (${formatBytes(file.size)})`, 'system');
+
+  const CHUNK = 64 * 1024;
+  const reader = file.stream().getReader();
+  let sent = 0;
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+
+    /* Split into chunks */
+    for (let i = 0; i < value.byteLength; i += CHUNK) {
+      const chunk = value.slice(i, Math.min(i + CHUNK, value.byteLength));
+      dc.send(chunk);
+      sent += chunk.byteLength;
+      bytesSent += chunk.byteLength;
+
+      /* Backpressure */
+      while (dc.bufferedAmount > 1024 * 1024) {
+        await new Promise(r => setTimeout(r, 10));
+      }
+    }
+  }
+
+  dc.send(JSON.stringify({ type: 'file-end' }));
+  addMsg(`File sent: ${file.name}`, 'system');
+  updateStats();
+}
+
+function formatBytes(b) {
+  if (b < 1024) return b + ' B';
+  if (b < 1024 * 1024) return (b / 1024).toFixed(1) + ' KB';
+  return (b / (1024 * 1024)).toFixed(1) + ' MB';
+}
+
+function updateStats() {
+  $('sSent').textContent = formatBytes(bytesSent);
+  $('sRecv').textContent = formatBytes(bytesRecv);
+  $('sMsgs').textContent = msgCount;
+}
+</script>
+<script src="/related.js"></script>
+</body>
+</html>

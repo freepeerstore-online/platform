@@ -1,0 +1,447 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>NAT Traversal & Hole Punching — FreePeerStore</title>
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: #0a0a0a; color: #e4e4e7; font-family: 'Manrope', sans-serif; min-height: 100vh; }
+    a { color: #a855f7; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+
+    .header { padding: 1rem 2rem; border-bottom: 1px solid #27272a; display: flex; align-items: center; gap: 1rem; }
+    .header .back { color: #71717a; font-size: 0.85rem; }
+    .header h1 { font-size: 1.1rem; font-weight: 700; }
+    .header h1 span { color: #a855f7; }
+
+    .layout { display: flex; height: calc(100vh - 53px); }
+    .sidebar { width: 300px; min-width: 300px; border-right: 1px solid #27272a; padding: 1.25rem; overflow-y: auto; display: flex; flex-direction: column; gap: 0.75rem; }
+    .main { flex: 1; position: relative; }
+    canvas { display: block; width: 100%; height: 100%; }
+
+    .section-title { font-size: 0.75rem; color: #71717a; text-transform: uppercase; letter-spacing: 0.05em; margin-top: 0.25rem; }
+    label { font-size: 0.8rem; color: #a1a1aa; display: block; margin-bottom: 4px; }
+
+    select {
+      width: 100%; background: #18181b; border: 1px solid #27272a; color: #e4e4e7;
+      padding: 8px 10px; border-radius: 6px; font-family: 'JetBrains Mono', monospace; font-size: 0.8rem;
+      margin-bottom: 0.5rem;
+    }
+
+    .btn {
+      background: #a855f7; color: #fff; border: none; padding: 10px 20px;
+      border-radius: 8px; cursor: pointer; font-family: 'Manrope', sans-serif;
+      font-weight: 600; font-size: 0.85rem; width: 100%; transition: background 0.2s;
+    }
+    .btn:hover { background: #9333ea; }
+    .btn.secondary { background: #27272a; color: #e4e4e7; }
+    .btn.secondary:hover { background: #3f3f46; }
+
+    .step-list { display: flex; flex-direction: column; gap: 4px; }
+    .step-item {
+      display: flex; align-items: flex-start; gap: 8px; padding: 6px 8px;
+      border-radius: 6px; font-size: 0.75rem; line-height: 1.4;
+      background: #18181b; border: 1px solid #27272a;
+      transition: all 0.3s;
+    }
+    .step-item.active { border-color: #a855f7; background: rgba(168,85,247,0.08); }
+    .step-item.done { border-color: #22c55e; }
+    .step-item.fail { border-color: #ef4444; }
+    .step-num {
+      width: 20px; height: 20px; border-radius: 50%; display: flex;
+      align-items: center; justify-content: center; font-size: 0.65rem;
+      font-weight: 700; background: #27272a; color: #71717a; flex-shrink: 0;
+    }
+    .step-item.active .step-num { background: #a855f7; color: #fff; }
+    .step-item.done .step-num { background: #22c55e; color: #fff; }
+    .step-item.fail .step-num { background: #ef4444; color: #fff; }
+
+    .matrix {
+      border-collapse: collapse; width: 100%; font-size: 0.65rem;
+      font-family: 'JetBrains Mono', monospace;
+    }
+    .matrix th { background: #18181b; padding: 4px; text-align: center; color: #71717a; border: 1px solid #27272a; }
+    .matrix td { padding: 4px; text-align: center; border: 1px solid #27272a; }
+    .matrix .yes { color: #22c55e; }
+    .matrix .no { color: #ef4444; }
+    .matrix .maybe { color: #f59e0b; }
+    .matrix .hl-row { background: rgba(168,85,247,0.08); }
+
+    @media (max-width: 768px) {
+      .layout { flex-direction: column; }
+      .sidebar { width: 100%; min-width: 0; max-height: 45vh; border-right: none; border-bottom: 1px solid #27272a; }
+    }
+  </style>
+</head>
+<body>
+
+<div class="header">
+  <a href="/" class="back">FreePeerStore</a>
+  <h1><span>NAT Traversal</span> & Hole Punching</h1>
+</div>
+
+<div class="layout">
+  <div class="sidebar">
+    <div class="section-title">NAT Types</div>
+    <label>Peer A NAT:</label>
+    <select id="natA">
+      <option value="full-cone">Full Cone</option>
+      <option value="restricted">Address Restricted</option>
+      <option value="port-restricted" selected>Port Restricted</option>
+      <option value="symmetric">Symmetric</option>
+    </select>
+    <label>Peer B NAT:</label>
+    <select id="natB">
+      <option value="full-cone">Full Cone</option>
+      <option value="restricted" selected>Address Restricted</option>
+      <option value="port-restricted">Port Restricted</option>
+      <option value="symmetric">Symmetric</option>
+    </select>
+
+    <button class="btn" id="startBtn">Run Traversal</button>
+    <button class="btn secondary" id="resetBtn" style="margin-top:4px">Reset</button>
+
+    <div class="section-title">Steps</div>
+    <div class="step-list" id="steps"></div>
+
+    <div class="section-title">Hole Punching Compatibility</div>
+    <table class="matrix" id="matrix"></table>
+  </div>
+
+  <div class="main">
+    <canvas id="canvas"></canvas>
+  </div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const canvas = $('canvas'), ctx = canvas.getContext('2d');
+
+const NAT_TYPES = ['full-cone', 'restricted', 'port-restricted', 'symmetric'];
+const NAT_LABELS = { 'full-cone': 'Full Cone', 'restricted': 'Restricted', 'port-restricted': 'Port Restricted', 'symmetric': 'Symmetric' };
+const NAT_SHORT = { 'full-cone': 'FC', 'restricted': 'AR', 'port-restricted': 'PR', 'symmetric': 'Sym' };
+
+/* Hole punching compatibility matrix */
+const COMPAT = {
+  'full-cone':      { 'full-cone': 'yes', 'restricted': 'yes', 'port-restricted': 'yes', 'symmetric': 'yes' },
+  'restricted':     { 'full-cone': 'yes', 'restricted': 'yes', 'port-restricted': 'yes', 'symmetric': 'maybe' },
+  'port-restricted':{ 'full-cone': 'yes', 'restricted': 'yes', 'port-restricted': 'yes', 'symmetric': 'no' },
+  'symmetric':      { 'full-cone': 'yes', 'restricted': 'maybe', 'port-restricted': 'no', 'symmetric': 'no' }
+};
+
+function buildMatrix() {
+  const natA = $('natA').value, natB = $('natB').value;
+  let html = '<tr><th></th>';
+  NAT_TYPES.forEach(t => html += `<th>${NAT_SHORT[t]}</th>`);
+  html += '</tr>';
+  NAT_TYPES.forEach(row => {
+    const isHl = row === natA;
+    html += `<tr class="${isHl ? 'hl-row' : ''}"><th>${NAT_SHORT[row]}</th>`;
+    NAT_TYPES.forEach(col => {
+      const v = COMPAT[row][col];
+      const isCell = row === natA && col === natB;
+      html += `<td class="${v}" style="${isCell ? 'font-weight:700;border-color:#a855f7' : ''}">${v === 'yes' ? 'Y' : v === 'no' ? 'N' : '?'}</td>`;
+    });
+    html += '</tr>';
+  });
+  $('matrix').innerHTML = html;
+}
+
+const STEPS_DEF = [
+  { id: 'stun-a', label: 'STUN: Peer A discovers public IP:port' },
+  { id: 'stun-b', label: 'STUN: Peer B discovers public IP:port' },
+  { id: 'signal-a', label: 'Signaling: A sends candidates to B' },
+  { id: 'signal-b', label: 'Signaling: B sends candidates to A' },
+  { id: 'punch-a', label: 'Hole punch: A sends UDP to B\'s public addr' },
+  { id: 'punch-b', label: 'Hole punch: B sends UDP to A\'s public addr' },
+  { id: 'connect', label: 'Direct P2P connection established' },
+  { id: 'turn', label: 'Fallback: TURN relay (if hole punch fails)' }
+];
+
+let currentStep = -1;
+let stepTimer = null;
+let useTurn = false;
+let packets = []; /* animated packets {x,y,tx,ty,color,progress} */
+
+function renderSteps() {
+  $('steps').innerHTML = STEPS_DEF.map((s, i) => {
+    let cls = '';
+    if (i < currentStep) cls = useTurn && i === 6 ? 'fail' : 'done';
+    else if (i === currentStep) cls = 'active';
+    if (useTurn && i === 7 && currentStep >= 7) cls = 'done';
+    if (!useTurn && i === 7) cls = ''; /* skip turn step */
+    return `<div class="step-item ${cls}"><div class="step-num">${i + 1}</div><span>${s.label}</span></div>`;
+  }).join('');
+}
+
+function resize() {
+  const dpr = window.devicePixelRatio || 1;
+  const rect = canvas.parentElement.getBoundingClientRect();
+  canvas.width = rect.width * dpr;
+  canvas.height = rect.height * dpr;
+  ctx.scale(dpr, dpr);
+  canvas.style.width = rect.width + 'px';
+  canvas.style.height = rect.height + 'px';
+}
+
+function W() { return canvas.width / (window.devicePixelRatio || 1); }
+function H() { return canvas.height / (window.devicePixelRatio || 1); }
+
+/* Layout positions */
+function getPositions() {
+  const w = W(), h = H();
+  return {
+    peerA: { x: w * 0.12, y: h * 0.55, label: 'Peer A', sublabel: '192.168.1.10:4000' },
+    peerB: { x: w * 0.88, y: h * 0.55, label: 'Peer B', sublabel: '10.0.0.5:5000' },
+    natA: { x: w * 0.30, y: h * 0.55, label: 'NAT A', sublabel: NAT_LABELS[$('natA').value] },
+    natB: { x: w * 0.70, y: h * 0.55, label: 'NAT B', sublabel: NAT_LABELS[$('natB').value] },
+    stun: { x: w * 0.50, y: h * 0.18, label: 'STUN Server', sublabel: 'stun.example.com:3478' },
+    signal: { x: w * 0.50, y: h * 0.35, label: 'Signal Server', sublabel: 'signal.example.com' },
+    turn: { x: w * 0.50, y: h * 0.78, label: 'TURN Relay', sublabel: 'turn.example.com:3478' },
+    pubA: { x: w * 0.30, y: h * 0.38, label: '', sublabel: '203.0.113.5:12345' },
+    pubB: { x: w * 0.70, y: h * 0.38, label: '', sublabel: '198.51.100.8:54321' },
+  };
+}
+
+function drawBox(x, y, w, h, label, sublabel, color, glow) {
+  ctx.fillStyle = '#18181b';
+  ctx.strokeStyle = glow ? color : '#27272a';
+  ctx.lineWidth = glow ? 2 : 1;
+  const r = 8;
+  ctx.beginPath();
+  ctx.moveTo(x - w/2 + r, y - h/2);
+  ctx.arcTo(x + w/2, y - h/2, x + w/2, y + h/2, r);
+  ctx.arcTo(x + w/2, y + h/2, x - w/2, y + h/2, r);
+  ctx.arcTo(x - w/2, y + h/2, x - w/2, y - h/2, r);
+  ctx.arcTo(x - w/2, y - h/2, x + w/2, y - h/2, r);
+  ctx.closePath();
+  ctx.fill(); ctx.stroke();
+
+  if (glow) {
+    ctx.shadowColor = color;
+    ctx.shadowBlur = 12;
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+  }
+
+  ctx.fillStyle = '#e4e4e7';
+  ctx.font = '600 12px Manrope';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  if (label) ctx.fillText(label, x, sublabel ? y - 7 : y);
+  if (sublabel) {
+    ctx.fillStyle = '#71717a';
+    ctx.font = '10px JetBrains Mono';
+    ctx.fillText(sublabel, x, label ? y + 9 : y);
+  }
+}
+
+function drawPacket(p) {
+  const x = p.x + (p.tx - p.x) * p.progress;
+  const y = p.y + (p.ty - p.y) * p.progress;
+  ctx.beginPath();
+  ctx.arc(x, y, 5, 0, Math.PI * 2);
+  ctx.fillStyle = p.color;
+  ctx.fill();
+  ctx.shadowColor = p.color;
+  ctx.shadowBlur = 8;
+  ctx.fill();
+  ctx.shadowBlur = 0;
+
+  /* Trail */
+  ctx.beginPath();
+  ctx.moveTo(p.x + (p.tx - p.x) * Math.max(0, p.progress - 0.15), p.y + (p.ty - p.y) * Math.max(0, p.progress - 0.15));
+  ctx.lineTo(x, y);
+  ctx.strokeStyle = p.color + '60';
+  ctx.lineWidth = 2;
+  ctx.stroke();
+}
+
+function drawArrow(x1, y1, x2, y2, color, dashed) {
+  ctx.beginPath();
+  ctx.moveTo(x1, y1);
+  ctx.lineTo(x2, y2);
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 1.5;
+  if (dashed) ctx.setLineDash([6, 4]);
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  const angle = Math.atan2(y2 - y1, x2 - x1);
+  ctx.beginPath();
+  ctx.moveTo(x2, y2);
+  ctx.lineTo(x2 - 8 * Math.cos(angle - 0.4), y2 - 8 * Math.sin(angle - 0.4));
+  ctx.lineTo(x2 - 8 * Math.cos(angle + 0.4), y2 - 8 * Math.sin(angle + 0.4));
+  ctx.fillStyle = color;
+  ctx.fill();
+}
+
+function draw() {
+  const w = W(), h = H();
+  ctx.clearRect(0, 0, w, h);
+  const pos = getPositions();
+
+  /* Background zones */
+  ctx.fillStyle = 'rgba(168,85,247,0.03)';
+  ctx.fillRect(0, h * 0.42, w * 0.42, h * 0.3);
+  ctx.fillRect(w * 0.58, h * 0.42, w * 0.42, h * 0.3);
+  ctx.strokeStyle = '#27272a';
+  ctx.setLineDash([4, 4]);
+  ctx.strokeRect(0, h * 0.42, w * 0.42, h * 0.3);
+  ctx.strokeRect(w * 0.58, h * 0.42, w * 0.42, h * 0.3);
+  ctx.setLineDash([]);
+  ctx.fillStyle = '#3f3f46';
+  ctx.font = '10px JetBrains Mono';
+  ctx.textAlign = 'center';
+  ctx.fillText('Private Network A', w * 0.21, h * 0.44);
+  ctx.fillText('Private Network B', w * 0.79, h * 0.44);
+
+  /* Internet zone */
+  ctx.fillStyle = '#71717a';
+  ctx.font = '11px Manrope';
+  ctx.fillText('Internet', w * 0.5, h * 0.5);
+
+  /* Draw boxes */
+  const stepActive = (id) => STEPS_DEF[currentStep]?.id === id;
+
+  drawBox(pos.peerA.x, pos.peerA.y, 110, 40, pos.peerA.label, pos.peerA.sublabel, '#a855f7', stepActive('punch-a') || stepActive('stun-a'));
+  drawBox(pos.peerB.x, pos.peerB.y, 110, 40, pos.peerB.label, pos.peerB.sublabel, '#3b82f6', stepActive('punch-b') || stepActive('stun-b'));
+  drawBox(pos.natA.x, pos.natA.y, 100, 40, pos.natA.label, pos.natA.sublabel, '#f59e0b', false);
+  drawBox(pos.natB.x, pos.natB.y, 100, 40, pos.natB.label, pos.natB.sublabel, '#f59e0b', false);
+  drawBox(pos.stun.x, pos.stun.y, 130, 36, pos.stun.label, pos.stun.sublabel, '#22c55e', stepActive('stun-a') || stepActive('stun-b'));
+  drawBox(pos.signal.x, pos.signal.y, 130, 36, pos.signal.label, pos.signal.sublabel, '#3b82f6', stepActive('signal-a') || stepActive('signal-b'));
+
+  if (useTurn || currentStep >= 7) {
+    drawBox(pos.turn.x, pos.turn.y, 130, 36, pos.turn.label, pos.turn.sublabel, '#ef4444', currentStep >= 7);
+  }
+
+  /* Public IP labels */
+  if (currentStep >= 0) {
+    ctx.fillStyle = '#a855f7';
+    ctx.font = '9px JetBrains Mono';
+    ctx.textAlign = 'center';
+    if (currentStep >= 0) ctx.fillText('203.0.113.5:12345', pos.natA.x, pos.natA.y - 28);
+    if (currentStep >= 1) ctx.fillText('198.51.100.8:54321', pos.natB.x, pos.natB.y - 28);
+  }
+
+  /* Step-specific arrows */
+  const ac = 'rgba(168,85,247,0.5)', bc = 'rgba(59,130,246,0.5)', gc = 'rgba(34,197,94,0.5)';
+  if (currentStep >= 0) drawArrow(pos.peerA.x + 55, pos.peerA.y - 10, pos.stun.x - 60, pos.stun.y + 10, ac, true);
+  if (currentStep >= 1) drawArrow(pos.peerB.x - 55, pos.peerB.y - 10, pos.stun.x + 60, pos.stun.y + 10, bc, true);
+  if (currentStep >= 2) drawArrow(pos.natA.x + 30, pos.natA.y - 15, pos.signal.x - 40, pos.signal.y + 10, ac, true);
+  if (currentStep >= 3) drawArrow(pos.natB.x - 30, pos.natB.y - 15, pos.signal.x + 40, pos.signal.y + 10, bc, true);
+
+  if (currentStep >= 4 && currentStep <= 6 && !useTurn) {
+    /* Hole punching arrows */
+    drawArrow(pos.natA.x + 50, pos.natA.y, pos.natB.x - 50, pos.natB.y, '#a855f7', false);
+    if (currentStep >= 5) drawArrow(pos.natB.x - 50, pos.natB.y, pos.natA.x + 50, pos.natA.y, '#3b82f6', false);
+  }
+
+  if (currentStep === 6 && !useTurn) {
+    /* Direct connection established */
+    ctx.fillStyle = '#22c55e';
+    ctx.font = '600 13px Manrope';
+    ctx.textAlign = 'center';
+    ctx.fillText('Direct P2P Connection', w * 0.5, pos.natA.y + 30);
+  }
+
+  if (useTurn && currentStep >= 7) {
+    /* TURN relay arrows */
+    drawArrow(pos.natA.x + 50, pos.natA.y + 15, pos.turn.x - 60, pos.turn.y, '#ef4444', false);
+    drawArrow(pos.natB.x - 50, pos.natB.y + 15, pos.turn.x + 60, pos.turn.y, '#ef4444', false);
+    ctx.fillStyle = '#ef4444';
+    ctx.font = '600 12px Manrope';
+    ctx.textAlign = 'center';
+    ctx.fillText('Relayed via TURN (higher latency)', w * 0.5, pos.turn.y + 30);
+  }
+
+  /* Animated packets */
+  packets.forEach(p => {
+    p.progress += 0.02;
+    if (p.progress <= 1) drawPacket(p);
+  });
+  packets = packets.filter(p => p.progress <= 1);
+
+  if (packets.length > 0) requestAnimationFrame(draw);
+}
+
+function canHolePunch() {
+  const a = $('natA').value, b = $('natB').value;
+  return COMPAT[a][b] === 'yes';
+}
+
+function runTraversal() {
+  currentStep = -1;
+  useTurn = false;
+  packets = [];
+  const pos = getPositions();
+  const willPunch = canHolePunch();
+
+  const totalSteps = willPunch ? 7 : 8;
+  let step = 0;
+
+  clearInterval(stepTimer);
+  stepTimer = setInterval(() => {
+    if (!willPunch && step === 4) {
+      /* Skip to TURN */
+      currentStep = 4;
+      renderSteps(); draw();
+      step++;
+      return;
+    }
+    if (!willPunch && step === 5) {
+      currentStep = 5;
+      renderSteps(); draw();
+      step++;
+      return;
+    }
+    if (!willPunch && step === 6) {
+      useTurn = true;
+      currentStep = 7; /* Jump to TURN */
+      renderSteps(); draw();
+      clearInterval(stepTimer);
+      return;
+    }
+
+    currentStep = step;
+
+    /* Add animated packet */
+    if (step === 0) packets.push({ x: pos.peerA.x, y: pos.peerA.y, tx: pos.stun.x, ty: pos.stun.y, color: '#a855f7', progress: 0 });
+    if (step === 1) packets.push({ x: pos.peerB.x, y: pos.peerB.y, tx: pos.stun.x, ty: pos.stun.y, color: '#3b82f6', progress: 0 });
+    if (step === 2) packets.push({ x: pos.natA.x, y: pos.natA.y, tx: pos.signal.x, ty: pos.signal.y, color: '#a855f7', progress: 0 });
+    if (step === 3) packets.push({ x: pos.natB.x, y: pos.natB.y, tx: pos.signal.x, ty: pos.signal.y, color: '#3b82f6', progress: 0 });
+    if (step === 4) packets.push({ x: pos.natA.x, y: pos.natA.y, tx: pos.natB.x, ty: pos.natB.y, color: '#a855f7', progress: 0 });
+    if (step === 5) packets.push({ x: pos.natB.x, y: pos.natB.y, tx: pos.natA.x, ty: pos.natA.y, color: '#3b82f6', progress: 0 });
+
+    renderSteps();
+    draw();
+    function animLoop() { if (packets.some(p => p.progress < 1)) { draw(); requestAnimationFrame(animLoop); } }
+    animLoop();
+
+    step++;
+    if (step >= totalSteps) clearInterval(stepTimer);
+  }, 1200);
+}
+
+$('startBtn').addEventListener('click', runTraversal);
+$('resetBtn').addEventListener('click', () => {
+  clearInterval(stepTimer);
+  currentStep = -1; useTurn = false; packets = [];
+  renderSteps(); draw();
+});
+$('natA').addEventListener('change', () => { buildMatrix(); draw(); });
+$('natB').addEventListener('change', () => { buildMatrix(); draw(); });
+
+window.addEventListener('resize', () => { resize(); draw(); });
+
+resize();
+renderSteps();
+buildMatrix();
+draw();
+</script>
+<script src="/related.js"></script>
+</body>
+</html>

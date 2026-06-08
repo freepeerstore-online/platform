@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>WebRTC Video Call — FreePeerStore</title>
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: #0a0a0a; color: #e4e4e7; font-family: 'Manrope', sans-serif; min-height: 100vh; display: flex; flex-direction: column; }
+    a { color: #a855f7; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+
+    .header { padding: 1rem 2rem; border-bottom: 1px solid #27272a; display: flex; align-items: center; gap: 1rem; }
+    .header .back { color: #71717a; font-size: 0.85rem; }
+    .header h1 { font-size: 1.1rem; font-weight: 700; }
+    .header h1 span { color: #a855f7; }
+    .status-pill {
+      margin-left: auto; padding: 4px 12px; border-radius: 999px; font-size: 0.75rem;
+      font-family: 'JetBrains Mono', monospace; border: 1px solid #27272a;
+    }
+    .status-pill.off { color: #71717a; }
+    .status-pill.connecting { color: #f59e0b; border-color: #f59e0b; }
+    .status-pill.on { color: #22c55e; border-color: #22c55e; }
+
+    .video-grid {
+      flex: 1; display: grid; grid-template-columns: 1fr 1fr;
+      gap: 1px; background: #27272a; min-height: 0;
+    }
+    .video-cell {
+      position: relative; background: #0a0a0a; display: flex;
+      align-items: center; justify-content: center; overflow: hidden;
+    }
+    .video-cell video {
+      width: 100%; height: 100%; object-fit: cover;
+    }
+    .video-label {
+      position: absolute; bottom: 12px; left: 12px;
+      background: rgba(0,0,0,0.7); padding: 4px 10px; border-radius: 6px;
+      font-size: 0.75rem; font-family: 'JetBrains Mono', monospace;
+    }
+    .video-placeholder {
+      display: flex; flex-direction: column; align-items: center; gap: 8px;
+      color: #3f3f46;
+    }
+    .video-placeholder svg { width: 48px; height: 48px; }
+
+    .controls-bar {
+      padding: 1rem 2rem; border-top: 1px solid #27272a;
+      display: flex; align-items: center; justify-content: center; gap: 12px; flex-wrap: wrap;
+    }
+    .ctrl-btn {
+      width: 48px; height: 48px; border-radius: 50%; border: 1px solid #27272a;
+      background: #18181b; color: #e4e4e7; cursor: pointer; display: flex;
+      align-items: center; justify-content: center; transition: all 0.2s;
+      font-size: 1.1rem;
+    }
+    .ctrl-btn:hover { border-color: #a855f7; }
+    .ctrl-btn.active { background: #a855f7; border-color: #a855f7; }
+    .ctrl-btn.danger { background: #ef4444; border-color: #ef4444; }
+
+    .signal-panel {
+      padding: 1rem 2rem; border-top: 1px solid #27272a;
+      display: flex; gap: 1rem; flex-wrap: wrap;
+    }
+    .signal-col { flex: 1; min-width: 250px; }
+    .signal-col label {
+      font-size: 0.75rem; color: #71717a; text-transform: uppercase;
+      letter-spacing: 0.05em; display: block; margin-bottom: 4px;
+    }
+    textarea.signal {
+      width: 100%; height: 70px; background: #18181b; border: 1px solid #27272a;
+      color: #e4e4e7; padding: 8px; border-radius: 6px; font-family: 'JetBrains Mono', monospace;
+      font-size: 0.65rem; resize: vertical;
+    }
+    textarea.signal:focus { outline: none; border-color: #a855f7; }
+
+    .btn {
+      background: #a855f7; color: #fff; border: none; padding: 8px 16px;
+      border-radius: 6px; cursor: pointer; font-weight: 600; font-size: 0.8rem;
+      transition: background 0.2s; margin-top: 4px;
+    }
+    .btn:hover { background: #9333ea; }
+    .btn.secondary { background: #27272a; color: #e4e4e7; }
+    .btn.secondary:hover { background: #3f3f46; }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .btn-row { display: flex; gap: 6px; margin-top: 6px; }
+
+    .stats-bar {
+      padding: 0.5rem 2rem; border-top: 1px solid #27272a;
+      display: flex; gap: 2rem; font-size: 0.7rem; font-family: 'JetBrains Mono', monospace; color: #71717a;
+      flex-wrap: wrap;
+    }
+    .stats-bar .hl { color: #a855f7; }
+
+    @media (max-width: 768px) {
+      .video-grid { grid-template-columns: 1fr; }
+      .signal-panel { flex-direction: column; }
+    }
+  </style>
+</head>
+<body>
+
+<div class="header">
+  <a href="/" class="back">FreePeerStore</a>
+  <h1><span>WebRTC</span> Video Call</h1>
+  <div class="status-pill off" id="statusPill">Disconnected</div>
+</div>
+
+<div class="video-grid">
+  <div class="video-cell">
+    <video id="localVideo" autoplay muted playsinline></video>
+    <div class="video-label">You (local)</div>
+    <div class="video-placeholder" id="localPlaceholder">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 4-7 8-7s8 3 8 7"/></svg>
+      <span style="font-size:0.8rem">Camera off</span>
+    </div>
+  </div>
+  <div class="video-cell">
+    <video id="remoteVideo" autoplay playsinline></video>
+    <div class="video-label">Remote peer</div>
+    <div class="video-placeholder" id="remotePlaceholder">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 4-7 8-7s8 3 8 7"/></svg>
+      <span style="font-size:0.8rem">Waiting for peer...</span>
+    </div>
+  </div>
+</div>
+
+<div class="controls-bar">
+  <button class="ctrl-btn" id="toggleAudio" title="Toggle microphone">&#x1F3A4;</button>
+  <button class="ctrl-btn" id="toggleVideo" title="Toggle camera">&#x1F4F7;</button>
+  <button class="ctrl-btn" id="screenShare" title="Share screen">&#x1F5A5;</button>
+  <button class="ctrl-btn danger" id="hangup" title="Hang up" style="display:none">&#x1F4F5;</button>
+</div>
+
+<div class="signal-panel">
+  <div class="signal-col">
+    <label>Step 1: Create or Paste Offer</label>
+    <textarea class="signal" id="offerText" placeholder="Click 'Create Offer' or paste one from peer..."></textarea>
+    <div class="btn-row">
+      <button class="btn" id="createOffer">Create Offer</button>
+      <button class="btn secondary" id="copyOffer">Copy</button>
+    </div>
+  </div>
+  <div class="signal-col">
+    <label>Step 2: Create or Paste Answer</label>
+    <textarea class="signal" id="answerText" placeholder="Generate answer or paste one from peer..."></textarea>
+    <div class="btn-row">
+      <button class="btn" id="createAnswer">Create Answer</button>
+      <button class="btn secondary" id="copyAnswer">Copy</button>
+      <button class="btn" id="acceptAnswer">Accept</button>
+    </div>
+  </div>
+</div>
+
+<div class="stats-bar">
+  <span>ICE: <span class="hl" id="sIce">-</span></span>
+  <span>Bitrate: <span class="hl" id="sBitrate">-</span></span>
+  <span>Resolution: <span class="hl" id="sRes">-</span></span>
+  <span>Codec: <span class="hl" id="sCodec">-</span></span>
+  <span>Packets lost: <span class="hl" id="sLost">0</span></span>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const ICE_SERVERS = [{ urls: 'stun:stun.l.google.com:19302' }];
+
+let pc = null, localStream = null, screenStream = null;
+let audioEnabled = true, videoEnabled = true;
+let prevBytesReceived = 0, prevTimestamp = 0;
+
+function setStatus(text, cls) {
+  const pill = $('statusPill');
+  pill.textContent = text;
+  pill.className = 'status-pill ' + cls;
+}
+
+async function getMedia() {
+  try {
+    localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+    $('localVideo').srcObject = localStream;
+    $('localPlaceholder').style.display = 'none';
+    return true;
+  } catch (e) {
+    console.warn('Media error:', e);
+    /* Try audio only */
+    try {
+      localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      $('localVideo').srcObject = localStream;
+      return true;
+    } catch (e2) {
+      alert('Could not access camera or microphone.');
+      return false;
+    }
+  }
+}
+
+function createPC_() {
+  pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
+
+  if (localStream) {
+    localStream.getTracks().forEach(t => pc.addTrack(t, localStream));
+  }
+
+  pc.ontrack = (e) => {
+    $('remoteVideo').srcObject = e.streams[0];
+    $('remotePlaceholder').style.display = 'none';
+  };
+
+  pc.oniceconnectionstatechange = () => {
+    $('sIce').textContent = pc.iceConnectionState;
+    if (pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed') {
+      setStatus('Connected', 'on');
+      $('hangup').style.display = '';
+    }
+    if (pc.iceConnectionState === 'disconnected' || pc.iceConnectionState === 'failed') {
+      setStatus('Disconnected', 'off');
+    }
+  };
+}
+
+/* Offerer */
+$('createOffer').addEventListener('click', async () => {
+  if (!localStream) { const ok = await getMedia(); if (!ok) return; }
+  createPC_();
+
+  const offer = await pc.createOffer();
+  await pc.setLocalDescription(offer);
+
+  await new Promise(resolve => {
+    if (pc.iceGatheringState === 'complete') return resolve();
+    pc.onicegatheringstatechange = () => { if (pc.iceGatheringState === 'complete') resolve(); };
+  });
+
+  $('offerText').value = btoa(JSON.stringify(pc.localDescription));
+  setStatus('Waiting for answer...', 'connecting');
+});
+
+$('copyOffer').addEventListener('click', () => {
+  navigator.clipboard.writeText($('offerText').value);
+  $('copyOffer').textContent = 'Copied!';
+  setTimeout(() => $('copyOffer').textContent = 'Copy', 1500);
+});
+
+/* Answerer */
+$('createAnswer').addEventListener('click', async () => {
+  if (!localStream) { const ok = await getMedia(); if (!ok) return; }
+  if (!pc) createPC_();
+
+  try {
+    const offer = JSON.parse(atob($('offerText').value.trim()));
+    await pc.setRemoteDescription(offer);
+    const answer = await pc.createAnswer();
+    await pc.setLocalDescription(answer);
+
+    await new Promise(resolve => {
+      if (pc.iceGatheringState === 'complete') return resolve();
+      pc.onicegatheringstatechange = () => { if (pc.iceGatheringState === 'complete') resolve(); };
+    });
+
+    $('answerText').value = btoa(JSON.stringify(pc.localDescription));
+    setStatus('Connecting...', 'connecting');
+  } catch (e) { alert('Invalid offer.'); }
+});
+
+$('copyAnswer').addEventListener('click', () => {
+  navigator.clipboard.writeText($('answerText').value);
+  $('copyAnswer').textContent = 'Copied!';
+  setTimeout(() => $('copyAnswer').textContent = 'Copy', 1500);
+});
+
+$('acceptAnswer').addEventListener('click', async () => {
+  try {
+    const answer = JSON.parse(atob($('answerText').value.trim()));
+    await pc.setRemoteDescription(answer);
+    setStatus('Connecting...', 'connecting');
+  } catch (e) { alert('Invalid answer.'); }
+});
+
+/* Controls */
+$('toggleAudio').addEventListener('click', () => {
+  if (!localStream) return;
+  audioEnabled = !audioEnabled;
+  localStream.getAudioTracks().forEach(t => t.enabled = audioEnabled);
+  $('toggleAudio').classList.toggle('active', !audioEnabled);
+});
+
+$('toggleVideo').addEventListener('click', () => {
+  if (!localStream) return;
+  videoEnabled = !videoEnabled;
+  localStream.getVideoTracks().forEach(t => t.enabled = videoEnabled);
+  $('toggleVideo').classList.toggle('active', !videoEnabled);
+  $('localPlaceholder').style.display = videoEnabled ? 'none' : '';
+});
+
+$('screenShare').addEventListener('click', async () => {
+  if (screenStream) {
+    /* Stop screen share, restore camera */
+    screenStream.getTracks().forEach(t => t.stop());
+    screenStream = null;
+    $('screenShare').classList.remove('active');
+    if (localStream && pc) {
+      const videoTrack = localStream.getVideoTracks()[0];
+      if (videoTrack) {
+        const sender = pc.getSenders().find(s => s.track?.kind === 'video');
+        if (sender) sender.replaceTrack(videoTrack);
+      }
+    }
+    return;
+  }
+  try {
+    screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true });
+    $('screenShare').classList.add('active');
+    const screenTrack = screenStream.getVideoTracks()[0];
+    if (pc) {
+      const sender = pc.getSenders().find(s => s.track?.kind === 'video');
+      if (sender) sender.replaceTrack(screenTrack);
+    }
+    screenTrack.onended = () => {
+      screenStream = null;
+      $('screenShare').classList.remove('active');
+      if (localStream && pc) {
+        const vt = localStream.getVideoTracks()[0];
+        if (vt) {
+          const sender = pc.getSenders().find(s => s.track?.kind === 'video');
+          if (sender) sender.replaceTrack(vt);
+        }
+      }
+    };
+  } catch (e) { /* user cancelled */ }
+});
+
+$('hangup').addEventListener('click', () => {
+  if (pc) pc.close();
+  if (localStream) localStream.getTracks().forEach(t => t.stop());
+  if (screenStream) screenStream.getTracks().forEach(t => t.stop());
+  pc = null; localStream = null; screenStream = null;
+  $('localVideo').srcObject = null;
+  $('remoteVideo').srcObject = null;
+  $('localPlaceholder').style.display = '';
+  $('remotePlaceholder').style.display = '';
+  $('hangup').style.display = 'none';
+  setStatus('Disconnected', 'off');
+});
+
+/* Stats polling */
+setInterval(async () => {
+  if (!pc) return;
+  try {
+    const stats = await pc.getStats();
+    stats.forEach(report => {
+      if (report.type === 'inbound-rtp' && report.kind === 'video') {
+        const now = report.timestamp;
+        const bytes = report.bytesReceived || 0;
+        if (prevTimestamp > 0) {
+          const dt = (now - prevTimestamp) / 1000;
+          const bitrate = ((bytes - prevBytesReceived) * 8 / dt / 1000).toFixed(0);
+          $('sBitrate').textContent = bitrate + ' kbps';
+        }
+        prevBytesReceived = bytes;
+        prevTimestamp = now;
+        $('sLost').textContent = report.packetsLost || 0;
+
+        if (report.frameWidth) {
+          $('sRes').textContent = `${report.frameWidth}x${report.frameHeight}`;
+        }
+      }
+      if (report.type === 'codec' && report.mimeType?.includes('video')) {
+        $('sCodec').textContent = report.mimeType.split('/')[1] || '-';
+      }
+    });
+  } catch (e) {}
+}, 2000);
+</script>
+<script src="/related.js"></script>
+</body>
+</html>

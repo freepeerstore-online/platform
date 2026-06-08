@@ -1,0 +1,474 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>BitTorrent Chunk Distribution — FreePeerStore</title>
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: #0a0a0a; color: #e4e4e7; font-family: 'Manrope', sans-serif; min-height: 100vh; }
+    a { color: #a855f7; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+
+    .header { padding: 1rem 2rem; border-bottom: 1px solid #27272a; display: flex; align-items: center; gap: 1rem; }
+    .header .back { color: #71717a; font-size: 0.85rem; }
+    .header h1 { font-size: 1.1rem; font-weight: 700; }
+    .header h1 span { color: #a855f7; }
+
+    .layout { display: flex; height: calc(100vh - 53px); }
+    .sidebar {
+      width: 280px; min-width: 280px; border-right: 1px solid #27272a;
+      padding: 1.25rem; overflow-y: auto; display: flex; flex-direction: column; gap: 1rem;
+    }
+    .main { flex: 1; position: relative; overflow: hidden; }
+    canvas { display: block; width: 100%; height: 100%; }
+
+    label { font-size: 0.8rem; color: #a1a1aa; display: block; margin-bottom: 4px; }
+    .control { margin-bottom: 0.75rem; }
+    input[type=range] { width: 100%; accent-color: #a855f7; }
+    .val { font-family: 'JetBrains Mono', monospace; color: #a855f7; font-size: 0.8rem; }
+
+    .btn {
+      background: #a855f7; color: #fff; border: none; padding: 10px 20px;
+      border-radius: 8px; cursor: pointer; font-family: 'Manrope', sans-serif;
+      font-weight: 600; font-size: 0.85rem; width: 100%; transition: background 0.2s;
+    }
+    .btn:hover { background: #9333ea; }
+    .btn.secondary { background: #27272a; color: #e4e4e7; }
+    .btn.secondary:hover { background: #3f3f46; }
+
+    .stats {
+      background: #18181b; border: 1px solid #27272a; border-radius: 8px;
+      padding: 0.75rem; font-family: 'JetBrains Mono', monospace; font-size: 0.75rem;
+    }
+    .stats .row { display: flex; justify-content: space-between; padding: 3px 0; }
+    .stats .label { color: #71717a; }
+    .stats .value { color: #e4e4e7; }
+    .stats .hl { color: #a855f7; }
+
+    .legend { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 0.5rem; }
+    .legend-item { display: flex; align-items: center; gap: 4px; font-size: 0.7rem; color: #a1a1aa; }
+    .legend-swatch { width: 10px; height: 10px; border-radius: 2px; }
+
+    .mode-toggle { display: flex; gap: 4px; margin-bottom: 0.75rem; }
+    .mode-btn {
+      flex: 1; padding: 6px; text-align: center; font-size: 0.75rem; font-weight: 600;
+      background: #18181b; border: 1px solid #27272a; border-radius: 6px;
+      cursor: pointer; color: #a1a1aa; transition: all 0.2s;
+    }
+    .mode-btn.active { background: rgba(168,85,247,0.12); border-color: #a855f7; color: #a855f7; }
+
+    @media (max-width: 768px) {
+      .layout { flex-direction: column; }
+      .sidebar { width: 100%; min-width: 0; max-height: 40vh; border-right: none; border-bottom: 1px solid #27272a; }
+    }
+  </style>
+</head>
+<body>
+
+<div class="header">
+  <a href="/" class="back">FreePeerStore</a>
+  <h1><span>BitTorrent</span> Chunk Distribution</h1>
+</div>
+
+<div class="layout">
+  <div class="sidebar">
+    <div class="control">
+      <label>Chunks: <span class="val" id="chunkVal">16</span></label>
+      <input type="range" id="chunks" min="8" max="64" value="16" step="4">
+    </div>
+    <div class="control">
+      <label>Peers: <span class="val" id="peerVal">15</span></label>
+      <input type="range" id="peers" min="10" max="30" value="15">
+    </div>
+    <div class="control">
+      <label>Upload speed (chunks/tick): <span class="val" id="speedVal">2</span></label>
+      <input type="range" id="speed" min="1" max="5" value="2">
+    </div>
+
+    <div class="mode-toggle">
+      <div class="mode-btn active" data-mode="bittorrent">BitTorrent</div>
+      <div class="mode-btn" data-mode="sequential">Sequential</div>
+      <div class="mode-btn" data-mode="compare">Compare</div>
+    </div>
+
+    <button class="btn" id="startBtn">Start Simulation</button>
+    <button class="btn secondary" id="resetBtn" style="margin-top:4px">Reset</button>
+
+    <div class="stats" id="stats">
+      <div class="row"><span class="label">Tick</span><span class="value" id="sTick">0</span></div>
+      <div class="row"><span class="label">Swarm completion</span><span class="value hl" id="sComp">0%</span></div>
+      <div class="row"><span class="label">Total uploads</span><span class="value" id="sUp">0</span></div>
+      <div class="row"><span class="label">Seed upload ratio</span><span class="value" id="sRatio">0.0</span></div>
+      <div class="row"><span class="label">Swarm health</span><span class="value" id="sHealth">-</span></div>
+    </div>
+
+    <div>
+      <label style="margin-bottom:6px">Chunk colors</label>
+      <div class="legend" id="legend"></div>
+    </div>
+  </div>
+
+  <div class="main">
+    <canvas id="canvas"></canvas>
+  </div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const canvas = $('canvas'), ctx = canvas.getContext('2d');
+
+let NUM_CHUNKS = 16, NUM_PEERS = 15, UPLOAD_SPEED = 2;
+let mode = 'bittorrent';
+let peers = [], tick = 0, running = false, animId = null;
+let totalUploads = 0;
+let chunkColors = [];
+let comparePeersSeq = [];
+
+/* Chunk colors - visually distinct */
+function genColors(n) {
+  const colors = [];
+  for (let i = 0; i < n; i++) {
+    const h = (i * 360 / n) % 360;
+    colors.push(`hsl(${h}, 70%, 55%)`);
+  }
+  return colors;
+}
+
+function showLegend() {
+  const el = $('legend');
+  el.innerHTML = '';
+  chunkColors.slice(0, 24).forEach((c, i) => {
+    el.innerHTML += `<div class="legend-item"><div class="legend-swatch" style="background:${c}"></div>${i}</div>`;
+  });
+  if (NUM_CHUNKS > 24) el.innerHTML += `<div class="legend-item" style="color:#71717a">+${NUM_CHUNKS - 24} more</div>`;
+}
+
+function createPeers(count) {
+  const arr = [];
+  const cx = canvas.width / 2, cy = canvas.height / 2;
+  const radius = Math.min(cx, cy) * 0.7;
+  for (let i = 0; i < count; i++) {
+    const angle = (i / count) * Math.PI * 2 - Math.PI / 2;
+    arr.push({
+      id: i,
+      x: cx + Math.cos(angle) * radius,
+      y: cy + Math.sin(angle) * radius,
+      chunks: i === 0 ? new Set(Array.from({ length: NUM_CHUNKS }, (_, k) => k)) : new Set(),
+      isSeed: i === 0,
+      targetX: cx + Math.cos(angle) * radius,
+      targetY: cy + Math.sin(angle) * radius,
+      uploadCount: 0,
+      downloadCount: 0
+    });
+  }
+  return arr;
+}
+
+function resize() {
+  const dpr = window.devicePixelRatio || 1;
+  const rect = canvas.parentElement.getBoundingClientRect();
+  canvas.width = rect.width * dpr;
+  canvas.height = rect.height * dpr;
+  ctx.scale(dpr, dpr);
+  canvas.style.width = rect.width + 'px';
+  canvas.style.height = rect.height + 'px';
+}
+
+function init() {
+  NUM_CHUNKS = +$('chunks').value;
+  NUM_PEERS = +$('peers').value;
+  UPLOAD_SPEED = +$('speed').value;
+  chunkColors = genColors(NUM_CHUNKS);
+  showLegend();
+  resize();
+  peers = createPeers(NUM_PEERS);
+  if (mode === 'compare') {
+    comparePeersSeq = createPeers(NUM_PEERS);
+  }
+  tick = 0; totalUploads = 0;
+  updateStats();
+  draw();
+}
+
+function rarestFirst(peer, allPeers) {
+  /* Count chunk availability across swarm */
+  const counts = new Map();
+  for (let c = 0; c < NUM_CHUNKS; c++) {
+    if (!peer.chunks.has(c)) {
+      let avail = 0;
+      allPeers.forEach(p => { if (p.chunks.has(c)) avail++; });
+      if (avail > 0) counts.set(c, avail);
+    }
+  }
+  /* Sort by rarest */
+  return [...counts.entries()].sort((a, b) => a[1] - b[1]).map(e => e[0]);
+}
+
+function sequentialOrder(peer) {
+  const needed = [];
+  for (let c = 0; c < NUM_CHUNKS; c++) {
+    if (!peer.chunks.has(c)) needed.push(c);
+  }
+  return needed; /* already in order */
+}
+
+function simulateTick(peerList, useRarest) {
+  const transfers = [];
+  /* Each peer with chunks can upload to UPLOAD_SPEED others */
+  const shuffled = [...peerList].sort(() => Math.random() - 0.5);
+
+  shuffled.forEach(uploader => {
+    if (uploader.chunks.size === 0) return;
+    let uploads = 0;
+    const candidates = shuffled.filter(p => p.id !== uploader.id && p.chunks.size < NUM_CHUNKS);
+    for (const dl of candidates) {
+      if (uploads >= UPLOAD_SPEED) break;
+      const wanted = useRarest ? rarestFirst(dl, peerList) : sequentialOrder(dl);
+      /* Find a chunk uploader has that downloader wants */
+      for (const c of wanted) {
+        if (uploader.chunks.has(c) && !dl.chunks.has(c)) {
+          dl.chunks.add(c);
+          uploader.uploadCount++;
+          dl.downloadCount++;
+          totalUploads++;
+          uploads++;
+          transfers.push({ from: uploader, to: dl, chunk: c });
+          break;
+        }
+      }
+    }
+  });
+  return transfers;
+}
+
+let transfers = [];
+let transferAnim = 0;
+
+function step() {
+  if (mode === 'compare') {
+    transfers = simulateTick(peers, true);
+    simulateTick(comparePeersSeq, false);
+  } else if (mode === 'bittorrent') {
+    transfers = simulateTick(peers, true);
+  } else {
+    transfers = simulateTick(peers, false);
+  }
+  transferAnim = 1;
+  tick++;
+  updateStats();
+  /* Check if done */
+  const done = peers.every(p => p.chunks.size === NUM_CHUNKS);
+  if (done) {
+    running = false;
+    $('startBtn').textContent = 'Complete!';
+  }
+}
+
+function updateStats() {
+  const totalChunks = peers.reduce((s, p) => s + p.chunks.size, 0);
+  const maxChunks = NUM_PEERS * NUM_CHUNKS;
+  const comp = ((totalChunks / maxChunks) * 100).toFixed(1);
+  const seedUps = peers[0] ? peers[0].uploadCount : 0;
+  const ratio = NUM_CHUNKS > 0 ? (seedUps / NUM_CHUNKS).toFixed(2) : '0.00';
+
+  /* Health: how many unique chunk copies exist */
+  const chunkCounts = [];
+  for (let c = 0; c < NUM_CHUNKS; c++) {
+    let count = 0;
+    peers.forEach(p => { if (p.chunks.has(c)) count++; });
+    chunkCounts.push(count);
+  }
+  const minCopies = Math.min(...chunkCounts);
+  const health = minCopies >= NUM_PEERS * 0.8 ? 'Excellent' : minCopies >= NUM_PEERS * 0.5 ? 'Good' : minCopies >= 2 ? 'Fair' : 'Critical';
+
+  $('sTick').textContent = tick;
+  $('sComp').textContent = comp + '%';
+  $('sUp').textContent = totalUploads;
+  $('sRatio').textContent = ratio;
+  $('sHealth').textContent = health + ` (min ${minCopies} copies)`;
+}
+
+function drawPeer(p, ox, oy, scale) {
+  const w = canvas.width / (window.devicePixelRatio || 1);
+  const h = canvas.height / (window.devicePixelRatio || 1);
+  const x = ox + p.x * scale;
+  const y = oy + p.y * scale;
+  const r = Math.max(14, 28 - NUM_PEERS * 0.5);
+
+  /* Draw chunk ring */
+  const sliceAngle = (Math.PI * 2) / NUM_CHUNKS;
+  for (let c = 0; c < NUM_CHUNKS; c++) {
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.arc(x, y, r, c * sliceAngle - Math.PI / 2, (c + 1) * sliceAngle - Math.PI / 2);
+    ctx.closePath();
+    if (p.chunks.has(c)) {
+      ctx.fillStyle = chunkColors[c];
+    } else {
+      ctx.fillStyle = '#27272a';
+    }
+    ctx.fill();
+  }
+
+  /* Border */
+  ctx.beginPath();
+  ctx.arc(x, y, r, 0, Math.PI * 2);
+  ctx.strokeStyle = p.isSeed ? '#a855f7' : '#3f3f46';
+  ctx.lineWidth = p.isSeed ? 2.5 : 1;
+  ctx.stroke();
+
+  /* Label */
+  ctx.fillStyle = '#71717a';
+  ctx.font = '10px JetBrains Mono';
+  ctx.textAlign = 'center';
+  ctx.fillText(p.isSeed ? 'SEED' : `P${p.id}`, x, y + r + 14);
+
+  /* Completion % */
+  const pct = ((p.chunks.size / NUM_CHUNKS) * 100).toFixed(0);
+  ctx.fillStyle = p.chunks.size === NUM_CHUNKS ? '#22c55e' : '#a1a1aa';
+  ctx.font = '9px JetBrains Mono';
+  ctx.fillText(pct + '%', x, y + r + 24);
+}
+
+function draw() {
+  const w = canvas.width / (window.devicePixelRatio || 1);
+  const h = canvas.height / (window.devicePixelRatio || 1);
+  ctx.clearRect(0, 0, w, h);
+
+  if (mode === 'compare') {
+    /* Split view */
+    const hw = w / 2;
+    ctx.save();
+    ctx.strokeStyle = '#27272a';
+    ctx.beginPath(); ctx.moveTo(hw, 0); ctx.lineTo(hw, h); ctx.stroke();
+
+    ctx.fillStyle = '#71717a';
+    ctx.font = '12px Manrope';
+    ctx.textAlign = 'center';
+    ctx.fillText('BitTorrent (rarest-first)', hw / 2, 20);
+    ctx.fillText('Sequential', hw + hw / 2, 20);
+
+    const scale = 0.45;
+    const ox1 = hw * 0.05, oy1 = 20;
+    const ox2 = hw + hw * 0.05, oy2 = 20;
+
+    /* Draw transfers for BT side */
+    if (transferAnim > 0) {
+      transfers.forEach(t => {
+        ctx.beginPath();
+        ctx.moveTo(ox1 + t.from.x * scale, oy1 + t.from.y * scale);
+        ctx.lineTo(ox1 + t.to.x * scale, oy1 + t.to.y * scale);
+        ctx.strokeStyle = chunkColors[t.chunk] + '80';
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+      });
+    }
+
+    peers.forEach(p => drawPeer(p, ox1, oy1, scale));
+    comparePeersSeq.forEach(p => drawPeer(p, ox2, oy2, scale));
+
+    /* Completion bars */
+    const btComp = peers.reduce((s, p) => s + p.chunks.size, 0) / (NUM_PEERS * NUM_CHUNKS);
+    const seqComp = comparePeersSeq.reduce((s, p) => s + p.chunks.size, 0) / (NUM_PEERS * NUM_CHUNKS);
+    const barY = h - 30, barW = hw * 0.8;
+
+    ctx.fillStyle = '#18181b';
+    ctx.fillRect(hw / 2 - barW / 2, barY, barW, 10);
+    ctx.fillRect(hw + hw / 2 - barW / 2, barY, barW, 10);
+    ctx.fillStyle = '#a855f7';
+    ctx.fillRect(hw / 2 - barW / 2, barY, barW * btComp, 10);
+    ctx.fillStyle = '#3b82f6';
+    ctx.fillRect(hw + hw / 2 - barW / 2, barY, barW * seqComp, 10);
+
+    ctx.restore();
+  } else {
+    /* Single view */
+    /* Draw transfer lines */
+    if (transferAnim > 0) {
+      transfers.forEach(t => {
+        ctx.beginPath();
+        ctx.moveTo(t.from.x, t.from.y);
+        ctx.lineTo(t.to.x, t.to.y);
+        ctx.strokeStyle = chunkColors[t.chunk] + '60';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+
+        /* Animated dot along line */
+        const mx = t.from.x + (t.to.x - t.from.x) * transferAnim;
+        const my = t.from.y + (t.to.y - t.from.y) * transferAnim;
+        ctx.beginPath();
+        ctx.arc(mx, my, 4, 0, Math.PI * 2);
+        ctx.fillStyle = chunkColors[t.chunk];
+        ctx.fill();
+      });
+    }
+
+    peers.forEach(p => drawPeer(p, 0, 0, 1));
+
+    /* Title */
+    ctx.fillStyle = '#71717a';
+    ctx.font = '12px Manrope';
+    ctx.textAlign = 'left';
+    ctx.fillText(mode === 'bittorrent' ? 'Rarest-first strategy' : 'Sequential download', 16, 24);
+  }
+
+  transferAnim = Math.max(0, transferAnim - 0.05);
+}
+
+let loopId = null;
+function startLoop() {
+  if (!running) return;
+  step();
+  draw();
+  loopId = setTimeout(startLoop, 200);
+}
+
+$('startBtn').addEventListener('click', () => {
+  if (running) {
+    running = false;
+    $('startBtn').textContent = 'Start Simulation';
+    return;
+  }
+  if (peers.every(p => p.chunks.size === NUM_CHUNKS)) init();
+  running = true;
+  $('startBtn').textContent = 'Pause';
+  startLoop();
+});
+
+$('resetBtn').addEventListener('click', () => {
+  running = false;
+  clearTimeout(loopId);
+  $('startBtn').textContent = 'Start Simulation';
+  init();
+});
+
+['chunks', 'peers', 'speed'].forEach(id => {
+  $(id).addEventListener('input', () => {
+    $(id + 'Val' === 'chunksVal' ? 'chunkVal' : id === 'peers' ? 'peerVal' : 'speedVal').textContent = $(id).value;
+    if (!running) init();
+  });
+  /* Fix val IDs */
+});
+$('chunks').addEventListener('input', () => { $('chunkVal').textContent = $('chunks').value; if (!running) init(); });
+$('peers').addEventListener('input', () => { $('peerVal').textContent = $('peers').value; if (!running) init(); });
+$('speed').addEventListener('input', () => { $('speedVal').textContent = $('speed').value; UPLOAD_SPEED = +$('speed').value; });
+
+document.querySelectorAll('.mode-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelector('.mode-btn.active').classList.remove('active');
+    btn.classList.add('active');
+    mode = btn.dataset.mode;
+    if (!running) init();
+  });
+});
+
+window.addEventListener('resize', () => { resize(); if (peers.length) { peers = createPeers(NUM_PEERS); if (mode === 'compare') comparePeersSeq = createPeers(NUM_PEERS); draw(); } });
+
+init();
+</script>
+<script src="/related.js"></script>
+</body>
+</html>

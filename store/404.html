@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Peer Not Found — FreePeerStore</title>
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      background: #0a0a0a; color: #e4e4e7;
+      font-family: 'Manrope', sans-serif;
+      min-height: 100vh; display: flex; flex-direction: column;
+      align-items: center; justify-content: center; text-align: center;
+      padding: 2rem;
+    }
+    canvas { position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: 0; opacity: 0.3; }
+    .content { position: relative; z-index: 1; }
+    .code { font-family: 'JetBrains Mono', monospace; font-size: 8rem; font-weight: 700; color: #a855f7; line-height: 1; }
+    h1 { font-size: 1.5rem; margin: 1rem 0 0.5rem; font-weight: 600; }
+    p { color: #71717a; max-width: 400px; line-height: 1.6; margin-bottom: 2rem; }
+    .terminal {
+      background: #18181b; border: 1px solid #27272a; border-radius: 8px;
+      padding: 1rem 1.5rem; font-family: 'JetBrains Mono', monospace;
+      font-size: 0.85rem; text-align: left; margin-bottom: 2rem;
+      max-width: 420px; width: 100%;
+    }
+    .terminal .prompt { color: #a855f7; }
+    .terminal .err { color: #ef4444; }
+    .terminal .ok { color: #22c55e; }
+    a.btn {
+      display: inline-block; padding: 0.75rem 2rem;
+      background: #a855f7; color: #fff; text-decoration: none;
+      border-radius: 8px; font-weight: 600; font-size: 0.9rem;
+      transition: background 0.2s;
+    }
+    a.btn:hover { background: #9333ea; }
+  </style>
+</head>
+<body>
+  <canvas id="bg"></canvas>
+  <div class="content">
+    <div class="code">404</div>
+    <h1>Peer Not Found</h1>
+    <p>The node you're looking for has left the swarm. It may have gone offline, changed its address, or never existed in this DHT.</p>
+    <div class="terminal">
+      <div><span class="prompt">$</span> dht lookup <span style="color:#71717a">&lt;this-page&gt;</span></div>
+      <div><span class="err">ERR</span> no route to peer</div>
+      <div><span class="err">ERR</span> all k-buckets exhausted</div>
+      <div><span class="prompt">$</span> fallback --redirect /</div>
+      <div><span class="ok">OK</span> redirecting to swarm root...</div>
+    </div>
+    <a href="/" class="btn">Return to Swarm</a>
+  </div>
+  <script>
+    const c = document.getElementById('bg'), ctx = c.getContext('2d');
+    let W, H, nodes = [];
+    function resize() { W = c.width = innerWidth; H = c.height = innerHeight; }
+    function init() {
+      resize();
+      nodes = Array.from({ length: 30 }, () => ({
+        x: Math.random() * W, y: Math.random() * H,
+        vx: (Math.random() - 0.5) * 0.5, vy: (Math.random() - 0.5) * 0.5
+      }));
+    }
+    function draw() {
+      ctx.clearRect(0, 0, W, H);
+      nodes.forEach(n => {
+        n.x += n.vx; n.y += n.vy;
+        if (n.x < 0 || n.x > W) n.vx *= -1;
+        if (n.y < 0 || n.y > H) n.vy *= -1;
+      });
+      for (let i = 0; i < nodes.length; i++)
+        for (let j = i + 1; j < nodes.length; j++) {
+          const dx = nodes[i].x - nodes[j].x, dy = nodes[i].y - nodes[j].y;
+          const d = Math.sqrt(dx * dx + dy * dy);
+          if (d < 150) {
+            ctx.beginPath(); ctx.moveTo(nodes[i].x, nodes[i].y);
+            ctx.lineTo(nodes[j].x, nodes[j].y);
+            ctx.strokeStyle = `rgba(168,85,247,${0.3 * (1 - d / 150)})`;
+            ctx.stroke();
+          }
+        }
+      nodes.forEach(n => {
+        ctx.beginPath(); ctx.arc(n.x, n.y, 3, 0, Math.PI * 2);
+        ctx.fillStyle = '#a855f7'; ctx.fill();
+      });
+      requestAnimationFrame(draw);
+    }
+    init(); draw(); addEventListener('resize', init);
+  </script>
+</body>
+</html>

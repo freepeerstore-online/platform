@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FreePeerStore — Build the Decentralized Web</title>
+  <meta name="description" content="Interactive P2P protocol simulations, working WebRTC tools, and collaborative apps. No servers. No accounts. Just connect.">
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: #0a0a0a; color: #e4e4e7; font-family: 'Manrope', sans-serif; }
+    a { color: inherit; text-decoration: none; }
+
+    /* Hero */
+    .hero {
+      position: relative; text-align: center;
+      padding: 5rem 2rem 3rem; overflow: hidden;
+    }
+    .hero canvas {
+      position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+      z-index: 0; opacity: 0.25;
+    }
+    .hero-content { position: relative; z-index: 1; max-width: 700px; margin: 0 auto; }
+    .hero-badge {
+      display: inline-block; font-family: 'JetBrains Mono', monospace;
+      font-size: 0.75rem; color: #a855f7; border: 1px solid #a855f7;
+      padding: 4px 12px; border-radius: 999px; margin-bottom: 1.5rem;
+      letter-spacing: 0.05em;
+    }
+    .hero h1 { font-size: 3rem; font-weight: 800; line-height: 1.1; margin-bottom: 1rem; }
+    .hero h1 span { color: #a855f7; }
+    .hero p { color: #a1a1aa; font-size: 1.1rem; line-height: 1.6; max-width: 520px; margin: 0 auto 2rem; }
+    .hero-tagline {
+      font-family: 'JetBrains Mono', monospace; font-size: 0.85rem;
+      color: #71717a; background: #18181b; border: 1px solid #27272a;
+      display: inline-block; padding: 0.5rem 1.25rem; border-radius: 8px;
+    }
+    .hero-tagline .prompt { color: #a855f7; }
+
+    /* Filters */
+    .filters {
+      display: flex; justify-content: center; gap: 8px;
+      padding: 1.5rem 2rem; flex-wrap: wrap;
+    }
+    .filter-btn {
+      background: #18181b; border: 1px solid #27272a; color: #a1a1aa;
+      padding: 8px 18px; border-radius: 8px; cursor: pointer;
+      font-family: 'Manrope', sans-serif; font-size: 0.85rem; font-weight: 500;
+      transition: all 0.2s;
+    }
+    .filter-btn:hover { border-color: #3f3f46; color: #e4e4e7; }
+    .filter-btn.active { background: rgba(168,85,247,0.12); border-color: #a855f7; color: #a855f7; }
+
+    /* Grid */
+    .grid {
+      max-width: 1100px; margin: 0 auto; padding: 1rem 2rem 4rem;
+      display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+      gap: 1rem;
+    }
+    .card {
+      background: #18181b; border: 1px solid #27272a; border-radius: 12px;
+      padding: 1.5rem; transition: all 0.25s; cursor: pointer;
+      display: flex; flex-direction: column;
+    }
+    .card:hover { border-color: #a855f7; transform: translateY(-2px); box-shadow: 0 8px 32px rgba(168,85,247,0.08); }
+    .card-cat {
+      font-family: 'JetBrains Mono', monospace; font-size: 0.7rem;
+      color: #a855f7; text-transform: uppercase; letter-spacing: 0.08em;
+      margin-bottom: 0.75rem;
+    }
+    .card h3 { font-size: 1.1rem; font-weight: 700; margin-bottom: 0.5rem; }
+    .card p { color: #a1a1aa; font-size: 0.85rem; line-height: 1.5; flex: 1; }
+    .card-tags { margin-top: 1rem; display: flex; flex-wrap: wrap; gap: 6px; }
+    .card-tags span {
+      font-family: 'JetBrains Mono', monospace; font-size: 0.65rem;
+      color: #71717a; background: #0a0a0a; padding: 3px 8px;
+      border-radius: 4px; border: 1px solid #27272a;
+    }
+
+    /* Footer */
+    .footer {
+      text-align: center; padding: 3rem 2rem; border-top: 1px solid #27272a;
+      color: #71717a; font-size: 0.85rem;
+    }
+    .footer-stores { display: flex; justify-content: center; gap: 1.5rem; flex-wrap: wrap; margin-bottom: 1rem; }
+    .footer-stores a { display: flex; align-items: center; gap: 6px; color: #71717a; transition: color 0.2s; }
+    .footer-stores a:hover { color: #e4e4e7; }
+    .store-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+  </style>
+</head>
+<body>
+
+<section class="hero">
+  <canvas id="hero-bg"></canvas>
+  <div class="hero-content">
+    <div class="hero-badge">peer-to-peer // no servers</div>
+    <h1>Free<span>Peer</span>Store</h1>
+    <p>Interactive protocol simulations, real WebRTC tools, and collaborative P2P apps. Learn how distributed systems work, then use them.</p>
+    <div class="hero-tagline"><span class="prompt">$</span> every tool runs peer-to-peer. no servers. no accounts. just connect.</div>
+  </div>
+</section>
+
+<div class="filters">
+  <button class="filter-btn active" data-cat="all">All</button>
+  <button class="filter-btn" data-cat="protocols">Protocols</button>
+  <button class="filter-btn" data-cat="tools">Tools</button>
+  <button class="filter-btn" data-cat="apps">Apps</button>
+</div>
+
+<div class="grid" id="grid"></div>
+
+<footer class="footer">
+  <div class="footer-stores">
+    <a href="https://freeappstore.online" target="_blank"><span class="store-dot" style="background:#3b82f6"></span>FreeAppStore</a>
+    <a href="https://freegamestore.online" target="_blank"><span class="store-dot" style="background:#22c55e"></span>FreeGameStore</a>
+    <a href="https://freewebstore.online" target="_blank"><span class="store-dot" style="background:#f59e0b"></span>FreeWebStore</a>
+    <a href="https://freeagentstore.online" target="_blank"><span class="store-dot" style="background:#ef4444"></span>FreeAgentStore</a>
+    <a href="/"><span class="store-dot" style="background:#a855f7"></span>FreePeerStore</a>
+  </div>
+  <p>Part of the Open Frontier — free tools for everyone.</p>
+</footer>
+
+<script>
+const TOOLS = [
+  { id:'bittorrent-sim', name:'BitTorrent Chunk Distribution', cat:'protocols', desc:'Visualize how BitTorrent splits files into chunks and distributes them across a swarm using rarest-first strategy. Compare sequential vs swarm download.', tags:['bittorrent','swarm','chunks','rarest-first'], path:'/protocols/bittorrent-sim/' },
+  { id:'dht-visualizer', name:'Distributed Hash Table', cat:'protocols', desc:'Kademlia-style DHT with XOR routing, k-buckets, node join/leave, and hop-by-hop lookup visualization on a ring of 20 nodes.', tags:['kademlia','xor','routing','k-buckets'], path:'/protocols/dht-visualizer/' },
+  { id:'gossip-protocol', name:'Gossip Protocol Simulator', cat:'protocols', desc:'Watch information spread through a 30-node network. Compare flooding, gossip, and tree broadcast. Drag to partition.', tags:['gossip','epidemic','convergence','partition'], path:'/protocols/gossip-protocol/' },
+  { id:'crdt-playground', name:'CRDT Collaborative Editor', cat:'protocols', desc:'Three simulated users editing via CRDTs with configurable delay and packet loss. See conflicts resolve automatically.', tags:['crdt','conflict-free','convergence','rga'], path:'/protocols/crdt-playground/' },
+  { id:'nat-traversal', name:'NAT Traversal & Hole Punching', cat:'protocols', desc:'Step-by-step animation of STUN discovery, hole punching, and TURN relay fallback. NAT type compatibility matrix.', tags:['nat','stun','turn','hole-punch'], path:'/protocols/nat-traversal/' },
+  { id:'webrtc-chat', name:'WebRTC P2P Chat', cat:'tools', desc:'Actual working peer-to-peer text chat and file transfer via WebRTC DataChannel. Clipboard-based signaling, zero servers.', tags:['webrtc','chat','datachannel','real'], path:'/tools/webrtc-chat/' },
+  { id:'webrtc-video', name:'WebRTC Video Call', cat:'tools', desc:'Peer-to-peer video calling with camera, microphone, and screen share. Manual signaling via clipboard — no server needed.', tags:['webrtc','video','screen-share','real'], path:'/tools/webrtc-video/' },
+  { id:'p2p-file-share', name:'P2P File Sharing', cat:'tools', desc:'Send any file directly browser-to-browser via WebRTC DataChannel. Chunked transfer with progress, speed, and ETA.', tags:['file-transfer','webrtc','chunked','zero-server'], path:'/tools/p2p-file-share/' },
+  { id:'p2p-whiteboard', name:'P2P Collaborative Whiteboard', cat:'apps', desc:'Draw together in real-time over WebRTC. Brush, eraser, shapes, colors, per-user undo, export to PNG.', tags:['whiteboard','canvas','collaborative','real-time'], path:'/apps/p2p-whiteboard/' },
+  { id:'p2p-editor', name:'P2P Collaborative Editor', cat:'apps', desc:'CRDT-based code/text editor synced over WebRTC with remote cursor tracking and syntax highlighting.', tags:['editor','crdt','syntax','collaborative'], path:'/apps/p2p-editor/' }
+];
+
+const CAT_LABELS = { protocols:'Protocol Simulation', tools:'Working P2P Tool', apps:'P2P App' };
+const grid = document.getElementById('grid');
+let activeFilter = 'all';
+
+function render() {
+  grid.innerHTML = '';
+  const items = activeFilter === 'all' ? TOOLS : TOOLS.filter(t => t.cat === activeFilter);
+  items.forEach(t => {
+    const card = document.createElement('a');
+    card.href = t.path;
+    card.className = 'card';
+    card.innerHTML = `
+      <div class="card-cat">${CAT_LABELS[t.cat]}</div>
+      <h3>${t.name}</h3>
+      <p>${t.desc}</p>
+      <div class="card-tags">${t.tags.map(tag => `<span>${tag}</span>`).join('')}</div>
+    `;
+    grid.appendChild(card);
+  });
+}
+
+document.querySelectorAll('.filter-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelector('.filter-btn.active').classList.remove('active');
+    btn.classList.add('active');
+    activeFilter = btn.dataset.cat;
+    render();
+  });
+});
+
+render();
+
+/* Hero background mesh animation */
+const c = document.getElementById('hero-bg'), ctx = c.getContext('2d');
+let W, H, nodes = [];
+function resize() { W = c.width = c.offsetWidth; H = c.height = c.offsetHeight; }
+function init() {
+  resize();
+  nodes = Array.from({ length: 40 }, () => ({
+    x: Math.random() * W, y: Math.random() * H,
+    vx: (Math.random() - 0.5) * 0.4, vy: (Math.random() - 0.5) * 0.4
+  }));
+}
+function draw() {
+  ctx.clearRect(0, 0, W, H);
+  nodes.forEach(n => {
+    n.x += n.vx; n.y += n.vy;
+    if (n.x < 0 || n.x > W) n.vx *= -1;
+    if (n.y < 0 || n.y > H) n.vy *= -1;
+  });
+  for (let i = 0; i < nodes.length; i++)
+    for (let j = i + 1; j < nodes.length; j++) {
+      const dx = nodes[i].x - nodes[j].x, dy = nodes[i].y - nodes[j].y;
+      const d = Math.sqrt(dx * dx + dy * dy);
+      if (d < 120) {
+        ctx.beginPath(); ctx.moveTo(nodes[i].x, nodes[i].y);
+        ctx.lineTo(nodes[j].x, nodes[j].y);
+        ctx.strokeStyle = `rgba(168,85,247,${0.4 * (1 - d / 120)})`;
+        ctx.stroke();
+      }
+    }
+  nodes.forEach(n => {
+    ctx.beginPath(); ctx.arc(n.x, n.y, 2.5, 0, Math.PI * 2);
+    ctx.fillStyle = '#a855f7'; ctx.fill();
+  });
+  requestAnimationFrame(draw);
+}
+init(); draw(); addEventListener('resize', init);
+</script>
+<script src="/related.js"></script>
+</body>
+</html>
