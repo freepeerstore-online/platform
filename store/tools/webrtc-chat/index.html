@@ -167,6 +167,25 @@
 <script>
 const $ = id => document.getElementById(id);
 
+
+function decodeSignal(text) {
+  try {
+    const cleaned = text.trim().replace(/\s+/g, '');
+    const json = decodeURIComponent(escape(atob(cleaned)));
+    const parsed = JSON.parse(json);
+    if (!parsed.type || !parsed.sdp) throw new Error('Missing type or sdp');
+    return parsed;
+  } catch (e) {
+    try {
+      const json = atob(text.trim().replace(/\s+/g, ''));
+      return JSON.parse(json);
+    } catch (e2) { return null; }
+  }
+}
+function encodeSignal(desc) {
+  return btoa(unescape(encodeURIComponent(JSON.stringify({type: desc.type, sdp: desc.sdp}))));
+}
+
 let pc = null, dc = null;
 let bytesSent = 0, bytesRecv = 0, msgCount = 0;
 let connected = false;
@@ -274,7 +293,7 @@ $('createBtn').addEventListener('click', async () => {
     pc.onicegatheringstatechange = () => { if (pc.iceGatheringState === 'complete') resolve(); };
   });
 
-  $('offerText').value = btoa(JSON.stringify(pc.localDescription));
+  $('offerText').value = encodeSignal(pc.localDescription);
   $('offerSection').style.display = 'block';
   $('answerInputSection').style.display = 'block';
   $('createBtn').disabled = true;
@@ -291,7 +310,7 @@ $('copyOffer').addEventListener('click', () => {
 $('acceptAnswer').addEventListener('click', async () => {
   try {
     const answer = JSON.parse(atob($('answerInput').value.trim()));
-    await pc.setRemoteDescription(answer);
+    await pc.setRemoteDescription(new RTCSessionDescription(answer));
     setStatus('Connecting...', '#f59e0b');
   } catch (e) { alert('Invalid answer. Make sure you paste the full text.'); }
 });
@@ -310,7 +329,7 @@ $('genAnswer').addEventListener('click', async () => {
     pc.ondatachannel = (e) => setupDC(e.channel);
 
     const offer = JSON.parse(atob($('offerInput').value.trim()));
-    await pc.setRemoteDescription(offer);
+    await pc.setRemoteDescription(new RTCSessionDescription(offer));
     const answer = await pc.createAnswer();
     await pc.setLocalDescription(answer);
 
@@ -319,7 +338,7 @@ $('genAnswer').addEventListener('click', async () => {
       pc.onicegatheringstatechange = () => { if (pc.iceGatheringState === 'complete') resolve(); };
     });
 
-    $('answerText').value = btoa(JSON.stringify(pc.localDescription));
+    $('answerText').value = encodeSignal(pc.localDescription);
     $('answerSection').style.display = 'block';
     setStatus('Connecting...', '#f59e0b');
   } catch (e) { alert('Invalid offer. Make sure you paste the full text.'); }

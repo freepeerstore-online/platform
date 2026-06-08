@@ -195,6 +195,25 @@ const $ = id => document.getElementById(id);
 const editor = $('editor');
 const ICE_SERVERS = [{ urls: 'stun:stun.l.google.com:19302' }];
 
+
+function decodeSignal(text) {
+  try {
+    const cleaned = text.trim().replace(/\s+/g, '');
+    const json = decodeURIComponent(escape(atob(cleaned)));
+    const parsed = JSON.parse(json);
+    if (!parsed.type || !parsed.sdp) throw new Error('Missing type or sdp');
+    return parsed;
+  } catch (e) {
+    try {
+      const json = atob(text.trim().replace(/\s+/g, ''));
+      return JSON.parse(json);
+    } catch (e2) { return null; }
+  }
+}
+function encodeSignal(desc) {
+  return btoa(unescape(encodeURIComponent(JSON.stringify({type: desc.type, sdp: desc.sdp}))));
+}
+
 let pc = null, dc = null;
 let lang = 'javascript';
 let opCount = 0;
@@ -433,7 +452,7 @@ $('createRoom').addEventListener('click', async () => {
     if (pc.iceGatheringState === 'complete') return r();
     pc.onicegatheringstatechange = () => { if (pc.iceGatheringState === 'complete') r(); };
   });
-  $('offerText').value = btoa(JSON.stringify(pc.localDescription));
+  $('offerText').value = encodeSignal(pc.localDescription);
   $('cpOffer').style.display = 'block'; $('cpJoin').style.display = 'none';
 });
 
@@ -464,7 +483,7 @@ $('genAns').addEventListener('click', async () => {
       if (pc.iceGatheringState === 'complete') return r();
       pc.onicegatheringstatechange = () => { if (pc.iceGatheringState === 'complete') r(); };
     });
-    $('answerText').value = btoa(JSON.stringify(pc.localDescription));
+    $('answerText').value = encodeSignal(pc.localDescription);
     $('ansOut').style.display = 'block';
   } catch (e) { alert('Invalid offer.'); }
 });

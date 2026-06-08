@@ -277,7 +277,26 @@ async function startSending() {
       sendDC.send(chunk);
       sent += chunk.byteLength;
 
-      const pct = (sent / selectedFile.size * 100).toFixed(1);
+      
+function decodeSignal(text) {
+  try {
+    const cleaned = text.trim().replace(/\s+/g, '');
+    const json = decodeURIComponent(escape(atob(cleaned)));
+    const parsed = JSON.parse(json);
+    if (!parsed.type || !parsed.sdp) throw new Error('Missing type or sdp');
+    return parsed;
+  } catch (e) {
+    try {
+      const json = atob(text.trim().replace(/\s+/g, ''));
+      return JSON.parse(json);
+    } catch (e2) { return null; }
+  }
+}
+function encodeSignal(desc) {
+  return btoa(unescape(encodeURIComponent(JSON.stringify({type: desc.type, sdp: desc.sdp}))));
+}
+
+const pct = (sent / selectedFile.size * 100).toFixed(1);
       $('sendFill').style.width = pct + '%';
       $('sendPct').textContent = pct + '%';
 

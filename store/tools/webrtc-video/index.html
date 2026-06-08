@@ -233,24 +233,47 @@ $('createOffer').addEventListener('click', async () => {
     pc.onicegatheringstatechange = () => { if (pc.iceGatheringState === 'complete') resolve(); };
   });
 
-  $('offerText').value = btoa(JSON.stringify(pc.localDescription));
-  setStatus('Waiting for answer...', 'connecting');
+  const desc = { type: pc.localDescription.type, sdp: pc.localDescription.sdp };
+  $('offerText').value = btoa(unescape(encodeURIComponent(JSON.stringify(desc))));
+  setStatus('Waiting for answer... Copy the offer and send to peer.', 'connecting');
 });
 
 $('copyOffer').addEventListener('click', () => {
-  navigator.clipboard.writeText($('offerText').value);
+  navigator.clipboard.writeText($('offerText').value.trim());
   $('copyOffer').textContent = 'Copied!';
   setTimeout(() => $('copyOffer').textContent = 'Copy', 1500);
 });
+
+function decodeSignal(text) {
+  try {
+    const cleaned = text.trim().replace(/\s+/g, '');
+    const json = decodeURIComponent(escape(atob(cleaned)));
+    const parsed = JSON.parse(json);
+    if (!parsed.type || !parsed.sdp) throw new Error('Missing type or sdp');
+    return parsed;
+  } catch (e) {
+    // Try without URI encoding (backwards compat)
+    try {
+      const json = atob(text.trim().replace(/\s+/g, ''));
+      const parsed = JSON.parse(json);
+      if (!parsed.type || !parsed.sdp) throw new Error('Missing type or sdp');
+      return parsed;
+    } catch (e2) {
+      return null;
+    }
+  }
+}
 
 /* Answerer */
 $('createAnswer').addEventListener('click', async () => {
   if (!localStream) { const ok = await getMedia(); if (!ok) return; }
   if (!pc) createPC_();
 
+  const offer = decodeSignal($('offerText').value);
+  if (!offer) { alert('Invalid offer. Make sure you copied the entire text from the other person.'); return; }
+
   try {
-    const offer = JSON.parse(atob($('offerText').value.trim()));
-    await pc.setRemoteDescription(offer);
+    await pc.setRemoteDescription(new RTCSessionDescription(offer));
     const answer = await pc.createAnswer();
     await pc.setLocalDescription(answer);
 
@@ -259,23 +282,26 @@ $('createAnswer').addEventListener('click', async () => {
       pc.onicegatheringstatechange = () => { if (pc.iceGatheringState === 'complete') resolve(); };
     });
 
-    $('answerText').value = btoa(JSON.stringify(pc.localDescription));
-    setStatus('Connecting...', 'connecting');
-  } catch (e) { alert('Invalid offer.'); }
+    const desc = { type: pc.localDescription.type, sdp: pc.localDescription.sdp };
+    $('answerText').value = btoa(unescape(encodeURIComponent(JSON.stringify(desc))));
+    setStatus('Connecting... Copy the answer and send to peer.', 'connecting');
+  } catch (e) { alert('Error creating answer: ' + e.message); }
 });
 
 $('copyAnswer').addEventListener('click', () => {
-  navigator.clipboard.writeText($('answerText').value);
+  navigator.clipboard.writeText($('answerText').value.trim());
   $('copyAnswer').textContent = 'Copied!';
   setTimeout(() => $('copyAnswer').textContent = 'Copy', 1500);
 });
 
 $('acceptAnswer').addEventListener('click', async () => {
+  const answer = decodeSignal($('answerText').value);
+  if (!answer) { alert('Invalid answer. Make sure you copied the entire text from the other person.'); return; }
+
   try {
-    const answer = JSON.parse(atob($('answerText').value.trim()));
-    await pc.setRemoteDescription(answer);
+    await pc.setRemoteDescription(new RTCSessionDescription(answer));
     setStatus('Connecting...', 'connecting');
-  } catch (e) { alert('Invalid answer.'); }
+  } catch (e) { alert('Error accepting answer: ' + e.message); }
 });
 
 /* Controls */
